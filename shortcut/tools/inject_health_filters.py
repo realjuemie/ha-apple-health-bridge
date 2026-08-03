@@ -11,57 +11,61 @@ from typing import Any
 
 
 METRICS: dict[str, dict[str, Any]] = {
-    "steps": {"type": "Steps", "days": 1, "group": "Day", "limit": 1},
+    # Health sample types are localized enum values in Shortcuts.  This bridge
+    # targets Simplified Chinese iOS, so use the names searchable in its editor.
+    "steps": {"type": "步数", "days": 1, "group": "Day", "limit": 1},
     "walking_running_distance": {
-        "type": "Walking + Running Distance",
+        "type": "步行+跑步距离",
         "days": 1,
         "group": "Day",
         "limit": 1,
     },
     "active_energy": {
-        "type": "Active Energy",
+        "type": "活动能量",
         "days": 1,
         "group": "Day",
         "limit": 1,
     },
     "exercise_minutes": {
-        "type": "Exercise Time",
+        "type": "锻炼分钟数",
         "days": 1,
         "group": "Day",
         "limit": 1,
     },
     "stand_hours": {
-        "type": "Stand Hours",
+        "type": "站立小时数",
         "days": 1,
         "group": "Day",
         "limit": 1,
     },
-    "heart_rate": {"type": "Heart Rate", "days": 7, "limit": 1},
+    "heart_rate": {"type": "心率", "days": 7, "limit": 1},
     "resting_heart_rate": {
-        "type": "Resting Heart Rate",
+        "type": "静息心率",
         "days": 7,
         "limit": 1,
     },
-    "blood_oxygen": {"type": "Blood Oxygen", "days": 7, "limit": 1},
+    "blood_oxygen": {"type": "血氧饱和度", "days": 7, "limit": 1},
     "respiratory_rate": {
-        "type": "Respiratory Rate",
+        "type": "呼吸频率",
         "days": 7,
         "limit": 1,
     },
-    "sleep_duration": {"type": "Sleep", "days": 2},
-    "weight": {"type": "Weight", "days": 30, "limit": 1},
+    "sleep_duration": {"type": "睡眠", "days": 2},
+    "weight": {"type": "体重", "days": 30, "limit": 1},
     "body_fat_percentage": {
-        "type": "Body Fat Percentage",
+        "type": "体脂百分比",
         "days": 30,
         "limit": 1,
     },
     "floors_climbed": {
-        "type": "Flights Climbed",
+        "type": "爬楼层数",
         "days": 1,
         "group": "Day",
         "limit": 1,
     },
 }
+
+AUTHORIZATION_KEY = "authorize_all"
 
 
 def _type_filter(type_name: str) -> dict[str, Any]:
@@ -117,6 +121,35 @@ def _health_params(existing: dict[str, Any], spec: dict[str, Any]) -> dict[str, 
     return preserved
 
 
+def _authorization_params(existing: dict[str, Any]) -> dict[str, Any]:
+    """Build one lightweight query that declares every supported Health type.
+
+    Shortcuts uses the static type predicates to determine which Health data the
+    shortcut needs. Keeping all types in one action makes iOS present the Health
+    authorization request at the beginning instead of while each metric runs.
+    """
+    preserved = {
+        key: deepcopy(value)
+        for key, value in existing.items()
+        if key in {"UUID", "CustomOutputName"}
+    }
+    preserved["WFContentItemFilter"] = {
+        "Value": {
+            "WFActionParameterFilterPrefix": 0,
+            "WFActionParameterFilterTemplates": [
+                _type_filter(spec["type"]) for spec in METRICS.values()
+            ],
+            "WFContentPredicateBoundedDate": False,
+        },
+        "WFSerializationType": "WFContentPredicateTableTemplate",
+    }
+    preserved["WFContentItemSortProperty"] = "Start Date"
+    preserved["WFContentItemSortOrder"] = "Latest First"
+    preserved["WFContentItemLimitEnabled"] = True
+    preserved["WFContentItemLimitNumber"] = 1
+    return preserved
+
+
 def inject(source: Path, destination: Path) -> tuple[int, int]:
     with source.open("rb") as file_handle:
         shortcut = plistlib.load(file_handle)
@@ -125,7 +158,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     post_actions = 0
     post_action_index: int | None = None
     health_detail_actions = 0
+    authorization_actions = 0
     dictionary_writes = 0
+    measurement_conversions = 0
     for action_index, action in enumerate(shortcut.get("WFWorkflowActions", [])):
         identifier = action.get("WFWorkflowActionIdentifier")
         params = action.get("WFWorkflowActionParameters", {})
@@ -165,9 +200,16 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             if token.get("string") != "\ufffc" or set(attachments) != {"{0, 1}"}:
                 raise ValueError("Dictionary value contains an invalid magic-variable token")
 
+        if identifier == "is.workflow.actions.measurement.convert":
+            measurement_conversions += 1
+
         if identifier != "is.workflow.actions.filter.health.quantity":
             continue
         metric_key = params.get("AHBMetric")
+        if metric_key == AUTHORIZATION_KEY:
+            action["WFWorkflowActionParameters"] = _authorization_params(params)
+            authorization_actions += 1
+            continue
         if metric_key not in METRICS:
             continue
         if metric_key in found:
@@ -182,15 +224,25 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
-    # Every quantity metric reads Value; Sleep reads Duration instead.
-    expected_health_details = len(METRICS)
+    if authorization_actions != 1:
+        raise ValueError(
+            f"Expected one consolidated Health authorization action, "
+            f"found {authorization_actions}"
+        )
+    # Every metric reads Value (or Duration for Sleep); all non-Sleep metrics
+    # also read Unit so values are never coerced through Convert Measurement.
+    expected_health_details = len(METRICS) + len(METRICS) - 1
     if health_detail_actions != expected_health_details:
         raise ValueError(
             f"Expected {expected_health_details} Health detail actions, "
             f"found {health_detail_actions}"
         )
-    if dictionary_writes != 35:
-        raise ValueError(f"Expected 35 dictionary writes, found {dictionary_writes}")
+    if dictionary_writes != 47:
+        raise ValueError(f"Expected 47 dictionary writes, found {dictionary_writes}")
+    if measurement_conversions:
+        raise ValueError(
+            f"Expected no Convert Measurement actions, found {measurement_conversions}"
+        )
     raw_actions = sum(
         action.get("WFWorkflowActionIdentifier") == "is.workflow.actions.rawaction"
         for action in shortcut.get("WFWorkflowActions", [])
