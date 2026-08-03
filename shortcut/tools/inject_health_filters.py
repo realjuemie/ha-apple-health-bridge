@@ -125,6 +125,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     post_actions = 0
     post_action_index: int | None = None
     health_detail_actions = 0
+    dictionary_writes = 0
     for action_index, action in enumerate(shortcut.get("WFWorkflowActions", [])):
         identifier = action.get("WFWorkflowActionIdentifier")
         params = action.get("WFWorkflowActionParameters", {})
@@ -154,6 +155,16 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             post_actions += 1
             post_action_index = action_index
 
+        if identifier == "is.workflow.actions.setvalueforkey":
+            dictionary_writes += 1
+            dictionary_value = params.get("WFDictionaryValue", {})
+            if dictionary_value.get("WFSerializationType") != "WFTextTokenString":
+                raise ValueError("Dictionary value is not a native magic-variable token")
+            token = dictionary_value.get("Value", {})
+            attachments = token.get("attachmentsByRange", {})
+            if token.get("string") != "\ufffc" or set(attachments) != {"{0, 1}"}:
+                raise ValueError("Dictionary value contains an invalid magic-variable token")
+
         if identifier != "is.workflow.actions.filter.health.quantity":
             continue
         metric_key = params.get("AHBMetric")
@@ -178,6 +189,8 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             f"Expected {expected_health_details} Health detail actions, "
             f"found {health_detail_actions}"
         )
+    if dictionary_writes != 35:
+        raise ValueError(f"Expected 35 dictionary writes, found {dictionary_writes}")
     raw_actions = sum(
         action.get("WFWorkflowActionIdentifier") == "is.workflow.actions.rawaction"
         for action in shortcut.get("WFWorkflowActions", [])

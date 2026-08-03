@@ -12,9 +12,6 @@
 
 #question haWebhook "粘贴 Apple Health Bridge 在 Home Assistant 中生成的完整 Webhook 地址" "http://homeassistant.local:8123/api/webhook/请替换为你的地址"
 
-// Generic variants used so dictionaries and numbers keep their native types.
-action 'setvalueforkey' setAnyValue(variable dictionary: 'WFDictionary', text key: 'WFDictionaryKey', variable value: 'WFDictionaryValue'): dictionary
-
 @Choices = list(
     "步数",
     "步行与跑步距离",
@@ -48,8 +45,8 @@ if @Selected contains "步数" {
         const StepsValue = getNumbers(StepsMeasurements)
         if StepsValue {
             @Metric = {"unit": "steps", "name": "步数"}
-            @Metric = setAnyValue(@Metric, "value", StepsValue)
-            @HealthData = setAnyValue(@HealthData, "steps", @Metric)
+            @Metric = setValue(@Metric, "value", "{StepsValue}")
+            @HealthData = setValue(@HealthData, "steps", "{@Metric}")
         }
     }
 }
@@ -62,8 +59,8 @@ if @Selected contains "步行与跑步距离" {
         const DistanceValue = getNumbers(DistanceKm)
         if DistanceValue {
             @Metric = {"unit": "km", "name": "步行与跑步距离"}
-            @Metric = setAnyValue(@Metric, "value", DistanceValue)
-            @HealthData = setAnyValue(@HealthData, "walking_running_distance", @Metric)
+            @Metric = setValue(@Metric, "value", "{DistanceValue}")
+            @HealthData = setValue(@HealthData, "walking_running_distance", "{@Metric}")
         }
     }
 }
@@ -76,8 +73,8 @@ if @Selected contains "活动能量" {
         const EnergyValue = getNumbers(EnergyKcal)
         if EnergyValue {
             @Metric = {"unit": "kcal", "name": "活动能量"}
-            @Metric = setAnyValue(@Metric, "value", EnergyValue)
-            @HealthData = setAnyValue(@HealthData, "active_energy", @Metric)
+            @Metric = setValue(@Metric, "value", "{EnergyValue}")
+            @HealthData = setValue(@HealthData, "active_energy", "{@Metric}")
         }
     }
 }
@@ -90,8 +87,8 @@ if @Selected contains "锻炼时间" {
         const ExerciseValue = getNumbers(ExerciseMinutes)
         if ExerciseValue {
             @Metric = {"unit": "min", "name": "锻炼时间"}
-            @Metric = setAnyValue(@Metric, "value", ExerciseValue)
-            @HealthData = setAnyValue(@HealthData, "exercise_minutes", @Metric)
+            @Metric = setValue(@Metric, "value", "{ExerciseValue}")
+            @HealthData = setValue(@HealthData, "exercise_minutes", "{@Metric}")
         }
     }
 }
@@ -104,8 +101,8 @@ if @Selected contains "站立小时" {
         const StandValue = getNumbers(StandHours)
         if StandValue {
             @Metric = {"unit": "h", "name": "站立小时"}
-            @Metric = setAnyValue(@Metric, "value", StandValue)
-            @HealthData = setAnyValue(@HealthData, "stand_hours", @Metric)
+            @Metric = setValue(@Metric, "value", "{StandValue}")
+            @HealthData = setValue(@HealthData, "stand_hours", "{@Metric}")
         }
     }
 }
@@ -117,8 +114,8 @@ if @Selected contains "心率" {
         const HeartRateValue = getNumbers(HeartRateMeasurements)
         if HeartRateValue {
             @Metric = {"unit": "bpm", "name": "心率"}
-            @Metric = setAnyValue(@Metric, "value", HeartRateValue)
-            @HealthData = setAnyValue(@HealthData, "heart_rate", @Metric)
+            @Metric = setValue(@Metric, "value", "{HeartRateValue}")
+            @HealthData = setValue(@HealthData, "heart_rate", "{@Metric}")
         }
     }
 }
@@ -130,8 +127,8 @@ if @Selected contains "静息心率" {
         const RestingHeartRateValue = getNumbers(RestingHeartRateMeasurements)
         if RestingHeartRateValue {
             @Metric = {"unit": "bpm", "name": "静息心率"}
-            @Metric = setAnyValue(@Metric, "value", RestingHeartRateValue)
-            @HealthData = setAnyValue(@HealthData, "resting_heart_rate", @Metric)
+            @Metric = setValue(@Metric, "value", "{RestingHeartRateValue}")
+            @HealthData = setValue(@HealthData, "resting_heart_rate", "{@Metric}")
         }
     }
 }
@@ -143,8 +140,8 @@ if @Selected contains "血氧" {
         const BloodOxygenValue = getNumbers(BloodOxygenMeasurements)
         if BloodOxygenValue {
             @Metric = {"unit": "%", "name": "血氧"}
-            @Metric = setAnyValue(@Metric, "value", BloodOxygenValue)
-            @HealthData = setAnyValue(@HealthData, "blood_oxygen", @Metric)
+            @Metric = setValue(@Metric, "value", "{BloodOxygenValue}")
+            @HealthData = setValue(@HealthData, "blood_oxygen", "{@Metric}")
         }
     }
 }
@@ -156,8 +153,8 @@ if @Selected contains "呼吸频率" {
         const RespiratoryRateValue = getNumbers(RespiratoryRateMeasurements)
         if RespiratoryRateValue {
             @Metric = {"unit": "breaths/min", "name": "呼吸频率"}
-            @Metric = setAnyValue(@Metric, "value", RespiratoryRateValue)
-            @HealthData = setAnyValue(@HealthData, "respiratory_rate", @Metric)
+            @Metric = setValue(@Metric, "value", "{RespiratoryRateValue}")
+            @HealthData = setValue(@HealthData, "respiratory_rate", "{@Metric}")
         }
     }
 }
@@ -174,8 +171,8 @@ if @Selected contains "睡眠时长" {
         const SleepValue = getNumbers(SleepHours)
         if SleepValue {
             @Metric = {"unit": "h", "name": "睡眠时长"}
-            @Metric = setAnyValue(@Metric, "value", SleepValue)
-            @HealthData = setAnyValue(@HealthData, "sleep_duration", @Metric)
+            @Metric = setValue(@Metric, "value", "{SleepValue}")
+            @HealthData = setValue(@HealthData, "sleep_duration", "{@Metric}")
         }
     }
 }
@@ -188,8 +185,8 @@ if @Selected contains "体重" {
         const WeightValue = getNumbers(WeightKg)
         if WeightValue {
             @Metric = {"unit": "kg", "name": "体重"}
-            @Metric = setAnyValue(@Metric, "value", WeightValue)
-            @HealthData = setAnyValue(@HealthData, "weight", @Metric)
+            @Metric = setValue(@Metric, "value", "{WeightValue}")
+            @HealthData = setValue(@HealthData, "weight", "{@Metric}")
         }
     }
 }
@@ -201,8 +198,8 @@ if @Selected contains "体脂率" {
         const BodyFatValue = getNumbers(BodyFatMeasurements)
         if BodyFatValue {
             @Metric = {"unit": "%", "name": "体脂率"}
-            @Metric = setAnyValue(@Metric, "value", BodyFatValue)
-            @HealthData = setAnyValue(@HealthData, "body_fat_percentage", @Metric)
+            @Metric = setValue(@Metric, "value", "{BodyFatValue}")
+            @HealthData = setValue(@HealthData, "body_fat_percentage", "{@Metric}")
         }
     }
 }
@@ -214,8 +211,8 @@ if @Selected contains "爬楼层数" {
         const FloorsValue = getNumbers(FloorsMeasurements)
         if FloorsValue {
             @Metric = {"unit": "floors", "name": "爬楼层数"}
-            @Metric = setAnyValue(@Metric, "value", FloorsValue)
-            @HealthData = setAnyValue(@HealthData, "floors_climbed", @Metric)
+            @Metric = setValue(@Metric, "value", "{FloorsValue}")
+            @HealthData = setValue(@HealthData, "floors_climbed", "{@Metric}")
         }
     }
 }
@@ -227,10 +224,10 @@ if @Selected contains "位置信息" {
     const AltitudeValue = getLocationDetail(CurrentLocationValue, "Altitude")
     if LatitudeValue {
         if LongitudeValue {
-            @LocationData = setAnyValue(@LocationData, "latitude", LatitudeValue)
-            @LocationData = setAnyValue(@LocationData, "longitude", LongitudeValue)
+            @LocationData = setValue(@LocationData, "latitude", "{LatitudeValue}")
+            @LocationData = setValue(@LocationData, "longitude", "{LongitudeValue}")
             if AltitudeValue {
-                @LocationData = setAnyValue(@LocationData, "altitude", AltitudeValue)
+                @LocationData = setValue(@LocationData, "altitude", "{AltitudeValue}")
             }
             @HasLocation = true
         }
@@ -241,26 +238,26 @@ if @Selected contains "Wi-Fi 信息" {
     const WifiNameValue = getWifiDetail("Network Name")
     const BssidValue = getWifiDetail("BSSID")
     if WifiNameValue {
-        @WifiData = setAnyValue(@WifiData, "ssid", WifiNameValue)
+        @WifiData = setValue(@WifiData, "ssid", "{WifiNameValue}")
         @HasWifi = true
     }
     if BssidValue {
-        @WifiData = setAnyValue(@WifiData, "bssid", BssidValue)
+        @WifiData = setValue(@WifiData, "bssid", "{BssidValue}")
     }
 }
 
 const NowValue = currentDate()
 const TimestampValue = formatDate(NowValue, "ISO 8601")
 @Payload = {"version": 1}
-@Payload = setAnyValue(@Payload, "timestamp", TimestampValue)
-@Payload = setAnyValue(@Payload, "health", @HealthData)
+@Payload = setValue(@Payload, "timestamp", "{TimestampValue}")
+@Payload = setValue(@Payload, "health", "{@HealthData}")
 
 if @HasLocation {
-    @Payload = setAnyValue(@Payload, "location", @LocationData)
+    @Payload = setValue(@Payload, "location", "{@LocationData}")
 }
 
 if @HasWifi {
-    @Payload = setAnyValue(@Payload, "wifi", @WifiData)
+    @Payload = setValue(@Payload, "wifi", "{@WifiData}")
 }
 
 const ServerResponse = downloadURL(haWebhook)
