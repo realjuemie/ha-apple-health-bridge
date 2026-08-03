@@ -1,17 +1,17 @@
 {
   "domain": "apple_health_bridge",
   "name": "Apple Health Bridge",
-  "version": "0.1.0",
+  "codeowners": [
+    "@realjuemie"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/realjuemie/ha-apple-health-bridge",
-  "issue_tracker": "https://github.com/realjuemie/ha-apple-health-bridge/issues",
   "dependencies": [
     "persistent_notification",
     "webhook"
   ],
-  "codeowners": [
-    "@realjuemie"
-  ],
+  "documentation": "https://github.com/realjuemie/ha-apple-health-bridge",
+  "integration_type": "device",
   "iot_class": "local_push",
-  "integration_type": "device"
+  "issue_tracker": "https://github.com/realjuemie/ha-apple-health-bridge/issues",
+  "version": "0.1.0"
 }

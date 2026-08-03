@@ -84,3 +84,7 @@ python -m unittest discover -s tests -v
 ```
 
 完整集成的运行验证需要 Home Assistant 2026.6 或更新版本。
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE)。
