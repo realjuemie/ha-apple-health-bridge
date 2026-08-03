@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "timestamp": "2026-08-03T10:30:00+08:00",
+  "health": {
+    "steps": {
+      "value": 6234,
+      "unit": "steps",
+      "name": "步数",
+      "start": "2026-08-03T00:00:00+08:00",
+      "end": "2026-08-03T10:30:00+08:00",
+      "source": "Health"
+    },
+    "heart_rate": {
+      "value": 72,
+      "unit": "bpm",
+      "name": "心率",
+      "start": "2026-08-03T10:27:00+08:00",
+      "end": "2026-08-03T10:27:05+08:00"
+    }
+  },
+  "location": {
+    "latitude": 31.2304,
+    "longitude": 121.4737,
+    "accuracy": 12,
+    "altitude": 8,
+    "timestamp": "2026-08-03T10:30:00+08:00"
+  },
+  "wifi": {
+    "ssid": "Home-WiFi",
+    "bssid": "00:00:00:00:00:00",
+    "channel": 149,
+    "standard": "802.11ax",
+    "rate": 1200
+  }
+}

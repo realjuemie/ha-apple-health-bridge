@@ -1,0 +1,17 @@
+{
+  "title": "苹果健康桥接",
+  "config": {
+    "step": {
+      "user": {
+        "title": "添加苹果设备",
+        "description": "为一个苹果设备创建仅限局域网访问的同步入口。",
+        "data": {
+          "device_name": "设备名称"
+        }
+      }
+    },
+    "error": {
+      "invalid_device_name": "请输入 1 到 64 个字符的设备名称"
+    }
+  }
+}
