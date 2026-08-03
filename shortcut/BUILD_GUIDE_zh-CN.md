@@ -6,6 +6,18 @@
 
 首次运行时，iOS 会分别请求“健康”“位置”和“本地网络”权限；这是系统权限，无法也不应绕过。
 
+## 零、直接安装（推荐）
+
+无需手工添加数百个动作：
+
+1. 在 iPhone 上下载并打开 [Apple Health Bridge.shortcut](dist/Apple%20Health%20Bridge.shortcut)。
+2. 点击“添加快捷指令”。
+3. 导入问题出现时，粘贴 HA 集成通知中的完整 webhook 地址。
+4. 运行快捷指令，在弹窗中多选本次需要同步的健康、位置和 Wi-Fi 数据。
+5. 首次运行按 iOS 提示授权；以后直接运行即可。
+
+成品需要 iOS 18 或更高版本。它在运行时不会访问外部服务器，只会向导入时填写的 HA 局域网 webhook 发送数据。下文保留手工搭建步骤，供排错或自行修改时参考；可复现源码位于 [`src/apple-health-bridge.cherri`](src/apple-health-bridge.cherri)，构建后处理与签名脚本位于 [`tools`](tools)。
+
 ## 一、准备 webhook 地址
 
 1. 在 Home Assistant 中添加“Apple Health Bridge”集成。

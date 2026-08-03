@@ -41,7 +41,11 @@
 1. 打开“设置 → 设备与服务 → 添加集成”，搜索 `Apple Health Bridge` 或“苹果健康桥接”。
 2. 输入设备名称。
 3. 从 HA 持久通知中复制本地 webhook 地址。
-4. 按 [快捷指令搭建说明](shortcut/BUILD_GUIDE_zh-CN.md) 在 iPhone 上创建快捷指令。
+4. 下载并打开 [已签名的 Apple Health Bridge 快捷指令](shortcut/dist/Apple%20Health%20Bridge.shortcut)。
+5. 导入时粘贴完整 webhook 地址；之后不需要手工搭建任何动作。
+6. 首次运行时选择要同步的数据，并按 iOS 提示授予健康、位置和本地网络权限。
+
+快捷指令需要 iOS 18 或更高版本。运行时只会连接你填写的 HA 局域网地址；仓库中的构建工具仅在生成苹果签名安装包时使用 Cherri Playground，不参与日常同步。源码、重新构建方法和手工搭建备用方案见 [快捷指令说明](shortcut/BUILD_GUIDE_zh-CN.md)。
 
 ## 数据协议
 

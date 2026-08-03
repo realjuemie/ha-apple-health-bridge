@@ -1,0 +1,215 @@
+#define name Apple Health Bridge
+#define glyph heart
+#define color red
+#define version 18
+
+#include 'actions/text'
+#include 'actions/math'
+#include 'actions/location'
+#include 'actions/network'
+#include 'actions/web'
+#include 'actions/calendar'
+
+#question haWebhook "粘贴 Apple Health Bridge 在 Home Assistant 中生成的完整 Webhook 地址" "http://homeassistant.local:8123/api/webhook/请替换为你的地址"
+
+// Generic variants used so dictionaries and numbers keep their native types.
+action 'setvalueforkey' setAnyValue(variable dictionary: 'WFDictionary', text key: 'WFDictionaryKey', variable value: 'WFDictionaryValue'): dictionary
+
+@Choices = list(
+    "步数",
+    "步行与跑步距离",
+    "活动能量",
+    "锻炼时间",
+    "站立小时",
+    "心率",
+    "静息心率",
+    "血氧",
+    "呼吸频率",
+    "睡眠时长",
+    "体重",
+    "体脂率",
+    "爬楼层数",
+    "位置信息",
+    "Wi-Fi 信息"
+)
+const PickedItems = chooseFromList(@Choices, "选择本次同步到 Home Assistant 的数据", true, true)
+@Selected = getText(PickedItems)
+
+@HealthData = {}
+@LocationData = {}
+@WifiData = {}
+
+if @Selected contains "步数" {
+    const StepsSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "steps"})
+    if StepsSamples {
+        const StepsValue = getNumbers(StepsSamples)
+        @Metric = {"unit": "steps", "name": "步数"}
+        @Metric = setAnyValue(@Metric, "value", StepsValue)
+        @HealthData = setAnyValue(@HealthData, "steps", @Metric)
+    }
+}
+
+if @Selected contains "步行与跑步距离" {
+    const DistanceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "walking_running_distance"})
+    if DistanceSamples {
+        const DistanceKm = convertMeasurement(DistanceSamples, "Length", "km")
+        const DistanceValue = getNumbers(DistanceKm)
+        @Metric = {"unit": "km", "name": "步行与跑步距离"}
+        @Metric = setAnyValue(@Metric, "value", DistanceValue)
+        @HealthData = setAnyValue(@HealthData, "walking_running_distance", @Metric)
+    }
+}
+
+if @Selected contains "活动能量" {
+    const EnergySamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "active_energy"})
+    if EnergySamples {
+        const EnergyKcal = convertMeasurement(EnergySamples, "Energy", "kcal")
+        const EnergyValue = getNumbers(EnergyKcal)
+        @Metric = {"unit": "kcal", "name": "活动能量"}
+        @Metric = setAnyValue(@Metric, "value", EnergyValue)
+        @HealthData = setAnyValue(@HealthData, "active_energy", @Metric)
+    }
+}
+
+if @Selected contains "锻炼时间" {
+    const ExerciseSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "exercise_minutes"})
+    if ExerciseSamples {
+        const ExerciseMinutes = convertMeasurement(ExerciseSamples, "Duration", "minutes")
+        const ExerciseValue = getNumbers(ExerciseMinutes)
+        @Metric = {"unit": "min", "name": "锻炼时间"}
+        @Metric = setAnyValue(@Metric, "value", ExerciseValue)
+        @HealthData = setAnyValue(@HealthData, "exercise_minutes", @Metric)
+    }
+}
+
+if @Selected contains "站立小时" {
+    const StandSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "stand_hours"})
+    if StandSamples {
+        const StandHours = convertMeasurement(StandSamples, "Duration", "hours")
+        const StandValue = getNumbers(StandHours)
+        @Metric = {"unit": "h", "name": "站立小时"}
+        @Metric = setAnyValue(@Metric, "value", StandValue)
+        @HealthData = setAnyValue(@HealthData, "stand_hours", @Metric)
+    }
+}
+
+if @Selected contains "心率" {
+    const HeartRateSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "heart_rate"})
+    if HeartRateSamples {
+        const HeartRateValue = getNumbers(HeartRateSamples)
+        @Metric = {"unit": "bpm", "name": "心率"}
+        @Metric = setAnyValue(@Metric, "value", HeartRateValue)
+        @HealthData = setAnyValue(@HealthData, "heart_rate", @Metric)
+    }
+}
+
+if @Selected contains "静息心率" {
+    const RestingHeartRateSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "resting_heart_rate"})
+    if RestingHeartRateSamples {
+        const RestingHeartRateValue = getNumbers(RestingHeartRateSamples)
+        @Metric = {"unit": "bpm", "name": "静息心率"}
+        @Metric = setAnyValue(@Metric, "value", RestingHeartRateValue)
+        @HealthData = setAnyValue(@HealthData, "resting_heart_rate", @Metric)
+    }
+}
+
+if @Selected contains "血氧" {
+    const BloodOxygenSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "blood_oxygen"})
+    if BloodOxygenSamples {
+        const BloodOxygenValue = getNumbers(BloodOxygenSamples)
+        @Metric = {"unit": "%", "name": "血氧"}
+        @Metric = setAnyValue(@Metric, "value", BloodOxygenValue)
+        @HealthData = setAnyValue(@HealthData, "blood_oxygen", @Metric)
+    }
+}
+
+if @Selected contains "呼吸频率" {
+    const RespiratoryRateSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "respiratory_rate"})
+    if RespiratoryRateSamples {
+        const RespiratoryRateValue = getNumbers(RespiratoryRateSamples)
+        @Metric = {"unit": "breaths/min", "name": "呼吸频率"}
+        @Metric = setAnyValue(@Metric, "value", RespiratoryRateValue)
+        @HealthData = setAnyValue(@HealthData, "respiratory_rate", @Metric)
+    }
+}
+
+if @Selected contains "睡眠时长" {
+    const SleepSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "sleep_duration"})
+    if SleepSamples {
+        const SleepDurations = rawAction("is.workflow.actions.properties.health.quantity", {
+            "WFInput": "${SleepSamples}",
+            "WFContentItemPropertyName": "Duration"
+        })
+        const SleepTotal = statistic("Sum", SleepDurations)
+        const SleepHours = convertMeasurement(SleepTotal, "Duration", "hours")
+        const SleepValue = getNumbers(SleepHours)
+        @Metric = {"unit": "h", "name": "睡眠时长"}
+        @Metric = setAnyValue(@Metric, "value", SleepValue)
+        @HealthData = setAnyValue(@HealthData, "sleep_duration", @Metric)
+    }
+}
+
+if @Selected contains "体重" {
+    const WeightSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "weight"})
+    if WeightSamples {
+        const WeightKg = convertMeasurement(WeightSamples, "Mass", "kg")
+        const WeightValue = getNumbers(WeightKg)
+        @Metric = {"unit": "kg", "name": "体重"}
+        @Metric = setAnyValue(@Metric, "value", WeightValue)
+        @HealthData = setAnyValue(@HealthData, "weight", @Metric)
+    }
+}
+
+if @Selected contains "体脂率" {
+    const BodyFatSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "body_fat_percentage"})
+    if BodyFatSamples {
+        const BodyFatValue = getNumbers(BodyFatSamples)
+        @Metric = {"unit": "%", "name": "体脂率"}
+        @Metric = setAnyValue(@Metric, "value", BodyFatValue)
+        @HealthData = setAnyValue(@HealthData, "body_fat_percentage", @Metric)
+    }
+}
+
+if @Selected contains "爬楼层数" {
+    const FloorsSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "floors_climbed"})
+    if FloorsSamples {
+        const FloorsValue = getNumbers(FloorsSamples)
+        @Metric = {"unit": "floors", "name": "爬楼层数"}
+        @Metric = setAnyValue(@Metric, "value", FloorsValue)
+        @HealthData = setAnyValue(@HealthData, "floors_climbed", @Metric)
+    }
+}
+
+if @Selected contains "位置信息" {
+    const CurrentLocationValue = getCurrentLocation()
+    const LatitudeValue = getLocationDetail(CurrentLocationValue, "Latitude")
+    const LongitudeValue = getLocationDetail(CurrentLocationValue, "Longitude")
+    const AltitudeValue = getLocationDetail(CurrentLocationValue, "Altitude")
+    @LocationData = setAnyValue(@LocationData, "latitude", LatitudeValue)
+    @LocationData = setAnyValue(@LocationData, "longitude", LongitudeValue)
+    @LocationData = setAnyValue(@LocationData, "altitude", AltitudeValue)
+}
+
+if @Selected contains "Wi-Fi 信息" {
+    const WifiNameValue = getWifiDetail("Network Name")
+    const BssidValue = getWifiDetail("BSSID")
+    @WifiData = setAnyValue(@WifiData, "ssid", WifiNameValue)
+    @WifiData = setAnyValue(@WifiData, "bssid", BssidValue)
+}
+
+const NowValue = currentDate()
+const TimestampValue = formatDate(NowValue, "ISO 8601")
+@Payload = {"version": 1}
+@Payload = setAnyValue(@Payload, "timestamp", TimestampValue)
+@Payload = setAnyValue(@Payload, "health", @HealthData)
+
+if @Selected contains "位置信息" {
+    @Payload = setAnyValue(@Payload, "location", @LocationData)
+}
+
+if @Selected contains "Wi-Fi 信息" {
+    @Payload = setAnyValue(@Payload, "wifi", @WifiData)
+}
+
+const ServerResponse = downloadURL(haWebhook)
+showNotification("已同步到 Home Assistant", "Apple Health Bridge", false)
