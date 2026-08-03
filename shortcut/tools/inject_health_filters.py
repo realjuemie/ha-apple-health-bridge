@@ -171,9 +171,12 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
-    if health_detail_actions != 1:
+    # Every quantity metric reads Value; Sleep reads Duration instead.
+    expected_health_details = len(METRICS)
+    if health_detail_actions != expected_health_details:
         raise ValueError(
-            f"Expected one Health detail action, found {health_detail_actions}"
+            f"Expected {expected_health_details} Health detail actions, "
+            f"found {health_detail_actions}"
         )
     raw_actions = sum(
         action.get("WFWorkflowActionIdentifier") == "is.workflow.actions.rawaction"
