@@ -243,7 +243,10 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
                 raise ValueError(f"Missing form value outputs: {sorted(missing_outputs)}")
             params.pop("WFHTTPBodyFile", None)
             params.pop("WFJSONValues", None)
-            items = [_form_item("version", {"string": "1"}, item_type=3)]
+            # The server defaults the protocol version to 1.  Do not emit a
+            # static form value here: iOS treats it as a magic variable in a
+            # form field, showing "unknown variable" and corrupting the POST.
+            items: list[dict[str, Any]] = []
             for key, output_name in FORM_VALUE_OUTPUTS.items():
                 items.append(_form_item(key, {
                     "Type": "ActionOutput",
