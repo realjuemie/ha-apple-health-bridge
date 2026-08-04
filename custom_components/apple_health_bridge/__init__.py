@@ -15,6 +15,7 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_WEBHOOK_ID,
     DOMAIN,
+    KNOWN_HEALTH_METRICS,
     MAX_PAYLOAD_BYTES,
     PLATFORMS,
 )
@@ -45,7 +46,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
             )
         try:
-            raw_payload = await request.json()
+            if request.content_type == "application/x-www-form-urlencoded":
+                form = await request.post()
+                health = {
+                    key: {"value": value}
+                    for key, value in form.items()
+                    if key in KNOWN_HEALTH_METRICS and str(value).strip()
+                }
+                raw_payload = {"version": 1, "health": health}
+                if form.get("latitude") and form.get("longitude"):
+                    raw_payload["location"] = {
+                        key: form[key]
+                        for key in ("latitude", "longitude", "altitude")
+                        if form.get(key)
+                    }
+                wifi = {
+                    key: form[key] for key in ("ssid", "bssid") if form.get(key)
+                }
+                if wifi:
+                    raw_payload["wifi"] = wifi
+            else:
+                raw_payload = await request.json()
         except Exception:
             raw_body = await request.read()
             preview = raw_body.decode("utf-8", errors="replace")[:512]
