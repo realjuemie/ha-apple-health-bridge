@@ -88,17 +88,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
 
         new_metrics = await manager.async_update(payload)
-        return json_response(
-            {
-                "ok": True,
-                "received": {
-                    "health": len(payload.get("health", {})),
-                    "location": "location" in payload,
-                    "wifi": "wifi" in payload,
-                },
-                "new_entities": sorted(new_metrics),
-            }
-        )
+        parts = [f"健康数据 {len(payload.get('health', {}))} 项"]
+        if "location" in payload:
+            parts.append("位置")
+        if "wifi" in payload:
+            parts.append("Wi-Fi")
+        if new_metrics:
+            parts.append(f"新增实体 {len(new_metrics)} 个")
+        return Response(text="同步成功：" + "、".join(parts), content_type="text/plain")
 
     webhook.async_register(
         hass,
