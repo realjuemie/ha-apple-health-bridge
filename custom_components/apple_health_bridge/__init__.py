@@ -47,8 +47,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             raw_payload = await request.json()
         except Exception:
+            raw_body = await request.read()
+            preview = raw_body.decode("utf-8", errors="replace")[:512]
             return json_response(
-                {"ok": False, "error": "invalid_json"},
+                {
+                    "ok": False,
+                    "error": "invalid_json",
+                    "content_type": request.content_type,
+                    "body_preview": preview,
+                },
                 status=HTTPStatus.BAD_REQUEST,
             )
         try:
