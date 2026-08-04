@@ -7,6 +7,7 @@ import argparse
 from copy import deepcopy
 from pathlib import Path
 import plistlib
+import uuid
 from typing import Any
 
 
@@ -123,6 +124,84 @@ def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str,
     }
 
 
+def _token(value: dict[str, Any]) -> dict[str, Any]:
+    return {"Value": value, "WFSerializationType": "WFTextTokenAttachment"}
+
+
+def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
+    """Persist the first multi-selection in the iOS Shortcuts password store."""
+    actions = shortcut.get("WFWorkflowActions", [])
+    choose_index = next(
+        (i for i, a in enumerate(actions)
+         if a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.choosefromlist"),
+        None,
+    )
+    if choose_index is None:
+        raise ValueError("Selection chooser action not found")
+    if any(a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.getpassword" for a in actions):
+        return
+    group = str(uuid.uuid4())
+    get_uuid = str(uuid.uuid4())
+    get_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.getpassword",
+        "WFWorkflowActionParameters": {
+            "WFPasswordKey": "AppleHealthBridgeSelection",
+            "CustomOutputName": "SavedSelection",
+            "UUID": get_uuid,
+        },
+    }
+    if_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+        "WFWorkflowActionParameters": {
+            "GroupingIdentifier": group,
+            "WFCondition": 100,
+            "WFControlFlowMode": 0,
+            "WFInput": {"Type": "Variable", "Variable": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Password"})},
+        },
+    }
+    saved_text_uuid = str(uuid.uuid4())
+    saved_text = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.detect.text",
+        "WFWorkflowActionParameters": {
+            "CustomOutputName": "SavedSelectionText",
+            "UUID": saved_text_uuid,
+            "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Password"}),
+        },
+    }
+    saved_var = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+        "WFWorkflowActionParameters": {
+            "WFVariableName": "Selected",
+            "WFInput": _token({"OutputUUID": saved_text_uuid, "Type": "ActionOutput", "OutputName": "SavedSelectionText"}),
+        },
+    }
+    otherwise = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+        "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 1},
+    }
+    end = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+        "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 2, "UUID": str(uuid.uuid4())},
+    }
+    # Existing chooser/text/set-variable actions become the otherwise branch.
+    for action in actions[choose_index:choose_index + 3]:
+        action.setdefault("WFWorkflowActionParameters", {})["GroupingIdentifier"] = group
+    chooser_params = actions[choose_index].setdefault("WFWorkflowActionParameters", {})
+    chooser_params.pop("WFControlFlowMode", None)
+    selection_set_uuid = actions[choose_index + 2]["WFWorkflowActionParameters"].get("UUID", str(uuid.uuid4()))
+    save_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.setpassword",
+        "WFWorkflowActionParameters": {
+            "WFPasswordKey": "AppleHealthBridgeSelection",
+            "WFPasswordValue": _token({"Type": "Variable", "VariableName": "Selected"}),
+            "UUID": str(uuid.uuid4()),
+        },
+    }
+    actions[choose_index + 2]["WFWorkflowActionParameters"]["UUID"] = selection_set_uuid
+    actions[choose_index + 3:choose_index + 3] = [save_action, end]
+    actions[choose_index:choose_index] = [get_action, if_action, saved_text, saved_var, otherwise]
+
+
 def _type_filter(type_name: str) -> dict[str, Any]:
     return {
         "Bounded": True,
@@ -208,6 +287,8 @@ def _authorization_params(existing: dict[str, Any]) -> dict[str, Any]:
 def inject(source: Path, destination: Path) -> tuple[int, int]:
     with source.open("rb") as file_handle:
         shortcut = plistlib.load(file_handle)
+
+    _inject_selection_persistence(shortcut)
 
     found: set[str] = set()
     post_actions = 0
