@@ -285,7 +285,5 @@ if @HasWifi {
 }
 
 const ServerResponse = downloadURL(haWebhook)
-@ResponseData = getDictionary(ServerResponse)
-@ReceivedData = @ResponseData['received']
-@ReceivedHealth = @ReceivedData['health']
-showNotification("已同步 {@ReceivedHealth} 项健康数据到 Home Assistant", "Apple Health Bridge", false)
+const ResponseText = getText(ServerResponse)
+showNotification("{ResponseText}", "Apple Health Bridge 响应", false)
