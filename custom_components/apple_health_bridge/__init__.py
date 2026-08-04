@@ -106,7 +106,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"Apple Health Bridge: {manager.device_name}",
         manager.webhook_id,
         handle_webhook,
-        local_only=True,
+        # The webhook ID is an unguessable capability token.  Allowing remote
+        # delivery is required for users who intentionally expose Home
+        # Assistant through a reverse proxy or Cloudflare Tunnel.
+        local_only=False,
         allowed_methods=("POST", "PUT"),
     )
     entry.async_on_unload(lambda: webhook.async_unregister(hass, manager.webhook_id))
