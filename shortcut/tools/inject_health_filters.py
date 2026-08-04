@@ -65,6 +65,27 @@ METRICS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Stored values for the HealthKit type picker. These are intentionally not
+# localized display labels: Shortcuts persists this canonical enumeration even
+# when its interface language is Chinese.
+_HEALTH_TYPE_ENUMERATIONS = {
+    "steps": "Steps",
+    "walking_running_distance": "Walking + Running Distance",
+    "active_energy": "Active Calories",
+    "exercise_minutes": "Exercise Time",
+    "stand_hours": "Stand Time",
+    "heart_rate": "Heart Rate",
+    "resting_heart_rate": "Resting Heart Rate",
+    "blood_oxygen": "Oxygen Saturation",
+    "respiratory_rate": "Respiratory Rate",
+    "sleep_duration": "Sleep",
+    "weight": "Weight",
+    "body_fat_percentage": "Body Fat Percentage",
+    "floors_climbed": "Flights Climbed",
+}
+for _metric_key, _type_name in _HEALTH_TYPE_ENUMERATIONS.items():
+    METRICS[_metric_key]["type"] = _type_name
+
 AUTHORIZATION_KEY = "authorize_all"
 
 

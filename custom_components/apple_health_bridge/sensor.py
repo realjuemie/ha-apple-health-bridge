@@ -23,7 +23,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors and add new metric entities at runtime."""
     manager: AppleHealthBridgeManager = entry.runtime_data
-    known_metric_keys: set[str] = set(manager.metrics)
+    # Always expose the supported Health entities.  They remain unavailable
+    # until the shortcut uploads a value, which makes setup observable even
+    # when HealthKit has not returned a sample yet.
+    known_metric_keys: set[str] = set(KNOWN_HEALTH_METRICS) | set(manager.metrics)
 
     entities: list[SensorEntity] = [
         AppleHealthLastSyncSensor(manager, entry),
