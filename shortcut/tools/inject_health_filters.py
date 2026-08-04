@@ -112,6 +112,8 @@ FORM_VALUE_OUTPUTS = {
     "bssid": "BssidValue",
 }
 
+SUM_OUTPUTS = {"StepsValue", "DistanceValue", "StandValue"}
+
 
 def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
     return {
@@ -215,9 +217,20 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     authorization_actions = 0
     dictionary_writes = 0
     measurement_conversions = 0
+    sum_actions = 0
     for action_index, action in enumerate(shortcut.get("WFWorkflowActions", [])):
         identifier = action.get("WFWorkflowActionIdentifier")
         params = action.get("WFWorkflowActionParameters", {})
+        if (
+            identifier == "is.workflow.actions.detect.number"
+            and params.get("CustomOutputName") in SUM_OUTPUTS
+        ):
+            # HealthKit returns multiple samples for these daily quantities.
+            # Get Numbers keeps the list/last sample; Statistics Sum produces
+            # the actual day total while preserving the existing input token.
+            action["WFWorkflowActionIdentifier"] = "is.workflow.actions.statistics"
+            params["WFStatisticsOperation"] = "Sum"
+            sum_actions += 1
         output_name = params.get("CustomOutputName")
         if output_name in FORM_VALUE_OUTPUTS.values():
             form_output_ids[output_name] = params["UUID"]
@@ -296,6 +309,8 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
+    if sum_actions != 3:
+        raise ValueError(f"Expected three daily sum actions, found {sum_actions}")
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
