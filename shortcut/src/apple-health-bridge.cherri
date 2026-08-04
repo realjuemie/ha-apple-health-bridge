@@ -284,6 +284,7 @@ if @HasWifi {
     @Payload = setValue(@Payload, "wifi", "{@WifiData}")
 }
 
+const PayloadText = getText(@Payload)
 const ServerResponse = downloadURL(haWebhook)
 const ResponseText = getText(ServerResponse)
 showNotification("{ResponseText}", "Apple Health Bridge 响应", false)
