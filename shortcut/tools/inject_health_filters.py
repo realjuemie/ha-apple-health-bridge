@@ -178,6 +178,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     found: set[str] = set()
     post_actions = 0
     post_action_index: int | None = None
+    json_conversion_actions = 0
     health_detail_actions = 0
     authorization_actions = 0
     dictionary_writes = 0
@@ -199,16 +200,36 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             action["WFWorkflowActionIdentifier"] = identifier
 
         if (
+            identifier == "is.workflow.actions.detect.text"
+            and params.get("CustomOutputName") == "PayloadText"
+        ):
+            # Directly attaching a Dictionary variable to WFJSONValues is
+            # interpreted as text by recent iOS releases. Convert it to the
+            # native JSON content item first, then attach that action output.
+            action["WFWorkflowActionIdentifier"] = "is.workflow.actions.getjsonfromdictionary"
+            params["CustomOutputName"] = "PayloadJson"
+            identifier = action["WFWorkflowActionIdentifier"]
+            json_conversion_actions += 1
+
+        if (
             identifier == "is.workflow.actions.downloadurl"
             and params.get("CustomOutputName") == "ServerResponse"
         ):
-            params.pop("WFJSONValues", None)
-            params["WFHTTPBodyFile"] = {
-                "Value": {"Type": "Variable", "VariableName": "PayloadText"},
+            previous = shortcut["WFWorkflowActions"][action_index - 1]
+            previous_params = previous["WFWorkflowActionParameters"]
+            if previous["WFWorkflowActionIdentifier"] != "is.workflow.actions.getjsonfromdictionary":
+                raise ValueError("JSON conversion action must precede the POST")
+            params.pop("WFHTTPBodyFile", None)
+            params["WFJSONValues"] = {
+                "Value": {
+                    "Type": "ActionOutput",
+                    "OutputUUID": previous_params["UUID"],
+                    "OutputName": "JSON",
+                },
                 "WFSerializationType": "WFTextTokenAttachment",
             }
             params["WFHTTPMethod"] = "POST"
-            params["WFHTTPBodyType"] = "File"
+            params["WFHTTPBodyType"] = "JSON"
             post_actions += 1
             post_action_index = action_index
 
@@ -246,6 +267,10 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
+    if json_conversion_actions != 1:
+        raise ValueError(
+            f"Expected one dictionary-to-JSON action, found {json_conversion_actions}"
+        )
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
