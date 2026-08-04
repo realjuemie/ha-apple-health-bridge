@@ -202,12 +202,13 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             identifier == "is.workflow.actions.downloadurl"
             and params.get("CustomOutputName") == "ServerResponse"
         ):
-            params["WFJSONValues"] = {
-                "Value": {"Type": "Variable", "VariableName": "Payload"},
+            params.pop("WFJSONValues", None)
+            params["WFHTTPBodyFile"] = {
+                "Value": {"Type": "Variable", "VariableName": "PayloadText"},
                 "WFSerializationType": "WFTextTokenAttachment",
             }
             params["WFHTTPMethod"] = "POST"
-            params["WFHTTPBodyType"] = "JSON"
+            params["WFHTTPBodyType"] = "File"
             post_actions += 1
             post_action_index = action_index
 
