@@ -88,6 +88,38 @@ for _metric_key, _type_name in _HEALTH_TYPE_ENUMERATIONS.items():
 
 AUTHORIZATION_KEY = "authorize_all"
 
+# Form fields are deliberately flat: this transport is supported by all
+# Shortcuts versions that support Get Contents of URL, unlike the unavailable
+# dictionary-to-JSON action used by the previous package.
+FORM_VALUE_OUTPUTS = {
+    "steps": "StepsValue",
+    "walking_running_distance": "DistanceValue",
+    "active_energy": "EnergyValue",
+    "exercise_minutes": "ExerciseValue",
+    "stand_hours": "StandValue",
+    "heart_rate": "HeartRateValue",
+    "resting_heart_rate": "RestingHeartRateValue",
+    "blood_oxygen": "BloodOxygenValue",
+    "respiratory_rate": "RespiratoryRateValue",
+    "sleep_duration": "SleepValue",
+    "weight": "WeightValue",
+    "body_fat_percentage": "BodyFatValue",
+    "floors_climbed": "FloorsValue",
+    "latitude": "LatitudeValue",
+    "longitude": "LongitudeValue",
+    "altitude": "AltitudeValue",
+    "ssid": "WifiNameValue",
+    "bssid": "BssidValue",
+}
+
+
+def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
+    return {
+        "WFItemType": item_type,
+        "WFKey": {"Value": {"string": key}, "WFSerializationType": "WFTextTokenString"},
+        "WFValue": {"Value": value, "WFSerializationType": "WFTextTokenAttachment"},
+    }
+
 
 def _type_filter(type_name: str) -> dict[str, Any]:
     return {
@@ -178,7 +210,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     found: set[str] = set()
     post_actions = 0
     post_action_index: int | None = None
-    json_conversion_actions = 0
+    form_output_ids: dict[str, str] = {}
     health_detail_actions = 0
     authorization_actions = 0
     dictionary_writes = 0
@@ -186,6 +218,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     for action_index, action in enumerate(shortcut.get("WFWorkflowActions", [])):
         identifier = action.get("WFWorkflowActionIdentifier")
         params = action.get("WFWorkflowActionParameters", {})
+        output_name = params.get("CustomOutputName")
+        if output_name in FORM_VALUE_OUTPUTS.values():
+            form_output_ids[output_name] = params["UUID"]
 
         # Cherri 2.3.0 keeps the generic rawaction identifier when rawAction()
         # is assigned to a variable. Restore the intended native action here.
@@ -200,36 +235,27 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             action["WFWorkflowActionIdentifier"] = identifier
 
         if (
-            identifier == "is.workflow.actions.detect.text"
-            and params.get("CustomOutputName") == "PayloadText"
-        ):
-            # Directly attaching a Dictionary variable to WFJSONValues is
-            # interpreted as text by recent iOS releases. Convert it to the
-            # native JSON content item first, then attach that action output.
-            action["WFWorkflowActionIdentifier"] = "is.workflow.actions.getjsonfromdictionary"
-            params["CustomOutputName"] = "PayloadJson"
-            identifier = action["WFWorkflowActionIdentifier"]
-            json_conversion_actions += 1
-
-        if (
             identifier == "is.workflow.actions.downloadurl"
             and params.get("CustomOutputName") == "ServerResponse"
         ):
-            previous = shortcut["WFWorkflowActions"][action_index - 1]
-            previous_params = previous["WFWorkflowActionParameters"]
-            if previous["WFWorkflowActionIdentifier"] != "is.workflow.actions.getjsonfromdictionary":
-                raise ValueError("JSON conversion action must precede the POST")
+            missing_outputs = set(FORM_VALUE_OUTPUTS.values()) - set(form_output_ids)
+            if missing_outputs:
+                raise ValueError(f"Missing form value outputs: {sorted(missing_outputs)}")
             params.pop("WFHTTPBodyFile", None)
-            params["WFJSONValues"] = {
-                "Value": {
+            params.pop("WFJSONValues", None)
+            items = [_form_item("version", {"string": "1"}, item_type=3)]
+            for key, output_name in FORM_VALUE_OUTPUTS.items():
+                items.append(_form_item(key, {
                     "Type": "ActionOutput",
-                    "OutputUUID": previous_params["UUID"],
-                    "OutputName": "JSON",
-                },
-                "WFSerializationType": "WFTextTokenAttachment",
+                    "OutputUUID": form_output_ids[output_name],
+                    "OutputName": output_name,
+                }))
+            params["WFFormValues"] = {
+                "Value": {"WFDictionaryFieldValueItems": items},
+                "WFSerializationType": "WFDictionaryFieldValue",
             }
             params["WFHTTPMethod"] = "POST"
-            params["WFHTTPBodyType"] = "JSON"
+            params["WFHTTPBodyType"] = "Form"
             post_actions += 1
             post_action_index = action_index
 
@@ -267,10 +293,6 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
-    if json_conversion_actions != 1:
-        raise ValueError(
-            f"Expected one dictionary-to-JSON action, found {json_conversion_actions}"
-        )
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
