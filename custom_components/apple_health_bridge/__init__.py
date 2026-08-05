@@ -40,6 +40,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def handle_webhook(
         _hass: HomeAssistant, _webhook_id: str, request: Request
     ) -> Response:
+        if request.method == "GET":
+            return Response(
+                text=manager.selection or "__AHB_SETUP_REQUIRED__",
+                content_type="text/plain",
+            )
         if request.content_length and request.content_length > MAX_PAYLOAD_BYTES:
             return json_response(
                 {"ok": False, "error": "payload_too_large"},
@@ -48,6 +53,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             if request.content_type == "application/x-www-form-urlencoded":
                 form = await request.post()
+                selection = str(form.get("selection", "")).strip()
+                if selection:
+                    await manager.async_set_selection(selection)
                 health = {
                     key: {"value": value}
                     for key, value in form.items()
@@ -107,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # delivery is required for users who intentionally expose Home
         # Assistant through a reverse proxy or Cloudflare Tunnel.
         local_only=False,
-        allowed_methods=("POST", "PUT"),
+        allowed_methods=("GET", "POST", "PUT"),
     )
     entry.async_on_unload(lambda: webhook.async_unregister(hass, manager.webhook_id))
 

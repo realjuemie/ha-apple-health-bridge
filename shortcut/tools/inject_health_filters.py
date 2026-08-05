@@ -129,7 +129,7 @@ def _token(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
-    """Persist the first multi-selection in the iOS Shortcuts password store."""
+    """Persist the first multi-selection through the HA webhook."""
     actions = shortcut.get("WFWorkflowActions", [])
     choose_index = next(
         (i for i, a in enumerate(actions)
@@ -138,41 +138,56 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     )
     if choose_index is None:
         raise ValueError("Selection chooser action not found")
-    if any(a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.getpassword" for a in actions):
+    if any(a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.downloadurl" and a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "ConfigResponse" for a in actions):
         return
     group = str(uuid.uuid4())
+    endpoint_uuid = str(uuid.uuid4())
+    endpoint = {"WFWorkflowActionIdentifier": "is.workflow.actions.url", "WFWorkflowActionParameters": {"WFURLActionURL": "", "CustomOutputName": "HAEndpoint", "UUID": endpoint_uuid}}
+    url_token = _token({"OutputUUID": endpoint_uuid, "Type": "ActionOutput", "OutputName": "URL"})
     get_uuid = str(uuid.uuid4())
     get_action = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.getpassword",
+        "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
         "WFWorkflowActionParameters": {
-            "WFPasswordKey": "AppleHealthBridgeSelection",
-            "CustomOutputName": "SavedSelection",
+            "WFURL": url_token,
+            "WFHTTPMethod": "GET",
+            "CustomOutputName": "ConfigResponse",
             "UUID": get_uuid,
         },
     }
+    text_uuid = str(uuid.uuid4())
+    saved_text = {"WFWorkflowActionIdentifier": "is.workflow.actions.detect.text", "WFWorkflowActionParameters": {"CustomOutputName": "ConfigText", "UUID": text_uuid, "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Content"})}}
     if_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {
             "GroupingIdentifier": group,
             "WFCondition": 100,
             "WFControlFlowMode": 0,
-            "WFInput": {"Type": "Variable", "Variable": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Password"})},
-        },
-    }
-    saved_text_uuid = str(uuid.uuid4())
-    saved_text = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.detect.text",
-        "WFWorkflowActionParameters": {
-            "CustomOutputName": "SavedSelectionText",
-            "UUID": saved_text_uuid,
-            "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Password"}),
+            "WFConditionalActionString": "__AHB_SETUP_REQUIRED__",
+            "WFInput": {
+                "Type": "Variable",
+                "Variable": _token(
+                    {
+                        "OutputUUID": text_uuid,
+                        "Type": "ActionOutput",
+                        "OutputName": "ConfigText",
+                    }
+                ),
+            },
         },
     }
     saved_var = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
         "WFWorkflowActionParameters": {
             "WFVariableName": "Selected",
-            "WFInput": _token({"OutputUUID": saved_text_uuid, "Type": "ActionOutput", "OutputName": "SavedSelectionText"}),
+            "WFInput": _token(
+                {
+                    "OutputUUID": text_uuid,
+                    "Type": "ActionOutput",
+                    "OutputName": "ConfigText",
+                }
+            ),
+            "GroupingIdentifier": group,
+            "UUID": str(uuid.uuid4()),
         },
     }
     otherwise = {
@@ -189,17 +204,13 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     chooser_params = actions[choose_index].setdefault("WFWorkflowActionParameters", {})
     chooser_params.pop("WFControlFlowMode", None)
     selection_set_uuid = actions[choose_index + 2]["WFWorkflowActionParameters"].get("UUID", str(uuid.uuid4()))
-    save_action = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.setpassword",
-        "WFWorkflowActionParameters": {
-            "WFPasswordKey": "AppleHealthBridgeSelection",
-            "WFPasswordValue": _token({"Type": "Variable", "VariableName": "Selected"}),
-            "UUID": str(uuid.uuid4()),
-        },
-    }
     actions[choose_index + 2]["WFWorkflowActionParameters"]["UUID"] = selection_set_uuid
-    actions[choose_index + 3:choose_index + 3] = [save_action, end]
-    actions[choose_index:choose_index] = [get_action, if_action, saved_text, saved_var, otherwise]
+    actions[choose_index + 3:choose_index + 3] = [otherwise, saved_var, end]
+    actions[choose_index:choose_index] = [endpoint, get_action, saved_text, if_action]
+    for action in actions:
+        params = action.get("WFWorkflowActionParameters") or {}
+        if params.get("CustomOutputName") == "ServerResponse":
+            params["WFURL"] = url_token
 
 
 def _type_filter(type_name: str) -> dict[str, Any]:
@@ -341,6 +352,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             # static form value here: iOS treats it as a magic variable in a
             # form field, showing "unknown variable" and corrupting the POST.
             items: list[dict[str, Any]] = []
+            items.append(_form_item("selection", {"Type": "Variable", "VariableName": "Selected"}))
             for key, output_name in FORM_VALUE_OUTPUTS.items():
                 items.append(_form_item(key, {
                     "Type": "ActionOutput",
@@ -421,7 +433,20 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     questions = shortcut.get("WFWorkflowImportQuestions", [])
     if len(questions) != 1 or questions[0].get("ParameterKey") != "WFURL":
         raise ValueError("Expected one Webhook URL import question")
-    questions[0]["ActionIndex"] = post_action_index
+    # The imported webhook URL belongs to the shared URL action used by both
+    # the configuration GET and the data POST.
+    endpoint_index = next(
+        (
+            i
+            for i, action in enumerate(shortcut["WFWorkflowActions"])
+            if action.get("WFWorkflowActionParameters", {}).get("CustomOutputName")
+            == "HAEndpoint"
+        ),
+        None,
+    )
+    if endpoint_index is None:
+        raise ValueError("Shared HA endpoint action not found")
+    questions[0]["ActionIndex"] = endpoint_index
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("wb") as file_handle:

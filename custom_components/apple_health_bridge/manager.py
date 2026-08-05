@@ -92,6 +92,17 @@ class AppleHealthBridgeManager:
         """Return Wi-Fi data."""
         return self.data.get("wifi", {})
 
+    @property
+    def selection(self) -> str | None:
+        """Return the persisted shortcut selection, if configured."""
+        value = self.data.get("selection")
+        return value if isinstance(value, str) and value else None
+
+    async def async_set_selection(self, selection: str) -> None:
+        """Persist the shortcut selection for subsequent runs."""
+        self.data["selection"] = selection
+        self.store.async_delay_save(lambda: storage_copy(self.data), delay=1)
+
     @staticmethod
     def _empty_data() -> dict[str, Any]:
         return {
