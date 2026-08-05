@@ -205,7 +205,10 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     endpoint = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.text",
         "WFWorkflowActionParameters": {
-            "WFTextActionText": "",
+            "WFTextActionText": {
+                "Value": {"string": ""},
+                "WFSerializationType": "WFTextTokenString",
+            },
             "CustomOutputName": "HAEndpoint",
             "UUID": endpoint_uuid,
         },
@@ -229,7 +232,9 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {
             "GroupingIdentifier": group,
-            "WFCondition": 100,
+            # 4 is the native Shortcuts "is" string comparison.  100 means
+            # "has any value", which incorrectly opened the chooser forever.
+            "WFCondition": 4,
             "WFControlFlowMode": 0,
             "WFConditionalActionString": "__AHB_SETUP_REQUIRED__",
             "WFInput": {
