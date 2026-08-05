@@ -128,6 +128,68 @@ def _token(value: dict[str, Any]) -> dict[str, Any]:
     return {"Value": value, "WFSerializationType": "WFTextTokenAttachment"}
 
 
+def _replace_output_references(
+    value: Any, replacements: dict[tuple[str, str], tuple[str, str]]
+) -> None:
+    """Rewrite magic-variable references in an action parameter tree."""
+    if isinstance(value, dict):
+        key = (value.get("OutputUUID"), value.get("OutputName"))
+        if key in replacements:
+            value["OutputUUID"], value["OutputName"] = replacements[key]
+        for child in value.values():
+            _replace_output_references(child, replacements)
+    elif isinstance(value, list):
+        for child in value:
+            _replace_output_references(child, replacements)
+
+
+def _inject_daily_sums(shortcut: dict[str, Any]) -> int:
+    """Sum ordinary numbers produced by Get Numbers for daily Health samples."""
+    actions = shortcut.get("WFWorkflowActions", [])
+    replacements: dict[tuple[str, str], tuple[str, str]] = {}
+    sums: list[dict[str, Any]] = []
+    for action in actions:
+        if action.get("WFWorkflowActionIdentifier") != "is.workflow.actions.detect.number":
+            continue
+        params = action.get("WFWorkflowActionParameters", {})
+        output_name = params.get("CustomOutputName")
+        if output_name not in SUM_OUTPUTS:
+            continue
+        source_uuid = params["UUID"]
+        numeric_name = f"{output_name}Numbers"
+        total_uuid = str(uuid.uuid4())
+        params["CustomOutputName"] = numeric_name
+        replacements[(source_uuid, output_name)] = (total_uuid, output_name)
+        sums.append(
+            {
+                "after": action,
+                "action": {
+                    "WFWorkflowActionIdentifier": "is.workflow.actions.statistics",
+                    "WFWorkflowActionParameters": {
+                        "CustomOutputName": output_name,
+                        "UUID": total_uuid,
+                        "WFInput": _token(
+                            {
+                                "OutputUUID": source_uuid,
+                                "Type": "ActionOutput",
+                                "OutputName": numeric_name,
+                            }
+                        ),
+                        "WFStatisticsOperation": "Sum",
+                    },
+                },
+            }
+        )
+    if len(sums) != 3:
+        return len(sums)
+    for action in actions:
+        _replace_output_references(action.get("WFWorkflowActionParameters", {}), replacements)
+    for item in reversed(sums):
+        index = actions.index(item["after"])
+        actions.insert(index + 1, item["action"])
+    return len(sums)
+
+
 def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     """Persist the first multi-selection through the HA webhook."""
     actions = shortcut.get("WFWorkflowActions", [])
@@ -190,6 +252,28 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
             "UUID": str(uuid.uuid4()),
         },
     }
+    save_selection = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
+        "WFWorkflowActionParameters": {
+            "WFURL": url_token,
+            "WFHTTPMethod": "POST",
+            "WFHTTPBodyType": "Form",
+            "WFFormValues": {
+                "Value": {
+                    "WFDictionaryFieldValueItems": [
+                        _form_item(
+                            "selection",
+                            {"Type": "Variable", "VariableName": "Selected"},
+                        )
+                    ]
+                },
+                "WFSerializationType": "WFDictionaryFieldValue",
+            },
+            "CustomOutputName": "ConfigSaveResponse",
+            "UUID": str(uuid.uuid4()),
+            "GroupingIdentifier": group,
+        },
+    }
     otherwise = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 1},
@@ -205,7 +289,12 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     chooser_params.pop("WFControlFlowMode", None)
     selection_set_uuid = actions[choose_index + 2]["WFWorkflowActionParameters"].get("UUID", str(uuid.uuid4()))
     actions[choose_index + 2]["WFWorkflowActionParameters"]["UUID"] = selection_set_uuid
-    actions[choose_index + 3:choose_index + 3] = [otherwise, saved_var, end]
+    actions[choose_index + 3:choose_index + 3] = [
+        save_selection,
+        otherwise,
+        saved_var,
+        end,
+    ]
     actions[choose_index:choose_index] = [endpoint, get_action, saved_text, if_action]
     for action in actions:
         params = action.get("WFWorkflowActionParameters") or {}
@@ -300,6 +389,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         shortcut = plistlib.load(file_handle)
 
     _inject_selection_persistence(shortcut)
+    sum_actions = _inject_daily_sums(shortcut)
 
     found: set[str] = set()
     post_actions = 0
@@ -309,20 +399,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     authorization_actions = 0
     dictionary_writes = 0
     measurement_conversions = 0
-    sum_actions = 0
     for action_index, action in enumerate(shortcut.get("WFWorkflowActions", [])):
         identifier = action.get("WFWorkflowActionIdentifier")
         params = action.get("WFWorkflowActionParameters", {})
-        if (
-            identifier == "is.workflow.actions.detect.number"
-            and params.get("CustomOutputName") in SUM_OUTPUTS
-        ):
-            # HealthKit returns multiple samples for these daily quantities.
-            # Get Numbers keeps the list/last sample; Statistics Sum produces
-            # the actual day total while preserving the existing input token.
-            action["WFWorkflowActionIdentifier"] = "is.workflow.actions.statistics"
-            params["WFStatisticsOperation"] = "Sum"
-            sum_actions += 1
         output_name = params.get("CustomOutputName")
         if output_name in FORM_VALUE_OUTPUTS.values():
             form_output_ids[output_name] = params["UUID"]
@@ -352,7 +431,6 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             # static form value here: iOS treats it as a magic variable in a
             # form field, showing "unknown variable" and corrupting the POST.
             items: list[dict[str, Any]] = []
-            items.append(_form_item("selection", {"Type": "Variable", "VariableName": "Selected"}))
             for key, output_name in FORM_VALUE_OUTPUTS.items():
                 items.append(_form_item(key, {
                     "Type": "ActionOutput",
@@ -447,6 +525,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     if endpoint_index is None:
         raise ValueError("Shared HA endpoint action not found")
     questions[0]["ActionIndex"] = endpoint_index
+    questions[0]["ParameterKey"] = "WFURLActionURL"
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("wb") as file_handle:

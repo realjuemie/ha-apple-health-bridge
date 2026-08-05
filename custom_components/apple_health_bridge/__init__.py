@@ -73,6 +73,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 }
                 if wifi:
                     raw_payload["wifi"] = wifi
+                # The shortcut saves the first-run selection in a separate
+                # request before collecting Health data. Treat it as a valid
+                # successful request, so iOS does not stop the shortcut on a
+                # 400 response before the actual sync starts.
+                if selection and not health and "location" not in raw_payload and not wifi:
+                    return Response(text="同步项目已保存", content_type="text/plain")
             else:
                 raw_payload = await request.json()
         except Exception:
