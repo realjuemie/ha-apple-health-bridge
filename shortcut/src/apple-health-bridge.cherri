@@ -15,6 +15,7 @@
 // 用一个包含全部支持类型的“查找健康样本”动作，在流程最前面集中触发健康授权。
 // iOS 仍会显示系统授权页，用户必须在该页确认；快捷指令不能绕过系统授权。
 const HealthAuthorization = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "authorize_all"})
+const HAEndpoint = text(haWebhook)
 
 @Choices = list(
     "步数",
@@ -285,6 +286,6 @@ if @HasWifi {
 }
 
 const PayloadText = getText(@Payload)
-const ServerResponse = downloadURL(haWebhook)
+const ServerResponse = downloadURL(HAEndpoint)
 const ResponseText = getText(ServerResponse)
 showNotification("{ResponseText}", "Apple Health Bridge 响应", false)

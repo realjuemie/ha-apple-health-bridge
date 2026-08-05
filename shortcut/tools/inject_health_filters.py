@@ -199,22 +199,24 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     if any(a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.downloadurl" and a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "ConfigResponse" for a in actions):
         return
     group = str(uuid.uuid4())
-    endpoint_uuid = str(uuid.uuid4())
-    # Import questions reliably populate a Text action on current iOS. URL
-    # action parameters can be cleared during import, leaving no shared URL.
-    endpoint = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.text",
-        "WFWorkflowActionParameters": {
-            "WFTextActionText": {
-                "Value": {"string": ""},
-                "WFSerializationType": "WFTextTokenString",
-            },
-            "CustomOutputName": "HAEndpoint",
-            "UUID": endpoint_uuid,
-        },
-    }
+    endpoint = next(
+        (
+            action
+            for action in actions
+            if action.get("WFWorkflowActionParameters", {}).get("CustomOutputName")
+            == "HAEndpoint"
+        ),
+        None,
+    )
+    if endpoint is None:
+        raise ValueError("Compiled Webhook text action not found")
+    endpoint_uuid = endpoint["WFWorkflowActionParameters"]["UUID"]
     url_token = _token(
-        {"OutputUUID": endpoint_uuid, "Type": "ActionOutput", "OutputName": "Text"}
+        {
+            "OutputUUID": endpoint_uuid,
+            "Type": "ActionOutput",
+            "OutputName": "HAEndpoint",
+        }
     )
     get_uuid = str(uuid.uuid4())
     get_action = {
@@ -307,7 +309,7 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
         saved_var,
         end,
     ]
-    actions[choose_index:choose_index] = [endpoint, get_action, saved_text, if_action]
+    actions[choose_index:choose_index] = [get_action, saved_text, if_action]
     for action in actions:
         params = action.get("WFWorkflowActionParameters") or {}
         if params.get("CustomOutputName") == "ServerResponse":
@@ -521,7 +523,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Unresolved raw actions remain: {raw_actions}")
 
     questions = shortcut.get("WFWorkflowImportQuestions", [])
-    if len(questions) != 1 or questions[0].get("ParameterKey") != "WFURL":
+    if len(questions) != 1 or questions[0].get("ParameterKey") != "WFTextActionText":
         raise ValueError("Expected one Webhook URL import question")
     # The imported webhook URL belongs to the shared URL action used by both
     # the configuration GET and the data POST.
