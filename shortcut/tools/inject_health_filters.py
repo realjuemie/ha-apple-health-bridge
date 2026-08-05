@@ -14,10 +14,11 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    "steps": {"type": "步数", "days": 1},
+    "steps": {"type": "步数", "days": 1, "group": "Day"},
     "walking_running_distance": {
         "type": "步行+跑步距离",
         "days": 1,
+        "group": "Day",
     },
     "active_energy": {
         "type": "活动能量",
@@ -34,6 +35,7 @@ METRICS: dict[str, dict[str, Any]] = {
     "stand_hours": {
         "type": "站立小时数",
         "days": 1,
+        "group": "Day",
     },
     "heart_rate": {"type": "心率", "days": 7, "limit": 1},
     "resting_heart_rate": {
@@ -414,7 +416,10 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         shortcut = plistlib.load(file_handle)
 
     _inject_selection_persistence(shortcut)
-    sum_actions = _inject_daily_sums(shortcut)
+    # HealthKit's Day grouping produces the daily aggregate directly. Do not
+    # add a second Statistics action: on current iOS it can return an empty
+    # value when fed Health quantity conversions.
+    sum_actions = 0
 
     found: set[str] = set()
     post_actions = 0
@@ -505,8 +510,6 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
-    if sum_actions != 3:
-        raise ValueError(f"Expected three daily sum actions, found {sum_actions}")
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
