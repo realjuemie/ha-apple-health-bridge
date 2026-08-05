@@ -124,6 +124,23 @@ def _token(value: dict[str, Any]) -> dict[str, Any]:
     return {"Value": value, "WFSerializationType": "WFTextTokenAttachment"}
 
 
+def _url_token(output_uuid: str, output_name: str) -> dict[str, Any]:
+    """Build the text-token format expected by Get Contents of URL."""
+    return {
+        "Value": {
+            "attachmentsByRange": {
+                "{0, 1}": {
+                    "OutputName": output_name,
+                    "OutputUUID": output_uuid,
+                    "Type": "ActionOutput",
+                }
+            },
+            "string": "\ufffc",
+        },
+        "WFSerializationType": "WFTextTokenString",
+    }
+
+
 def _replace_output_references(
     value: Any, replacements: dict[tuple[str, str], tuple[str, str]]
 ) -> None:
@@ -211,13 +228,7 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     if endpoint is None:
         raise ValueError("Compiled Webhook text action not found")
     endpoint_uuid = endpoint["WFWorkflowActionParameters"]["UUID"]
-    url_token = _token(
-        {
-            "OutputUUID": endpoint_uuid,
-            "Type": "ActionOutput",
-            "OutputName": "HAEndpoint",
-        }
-    )
+    url_token = _url_token(endpoint_uuid, "HAEndpoint")
     get_uuid = str(uuid.uuid4())
     get_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
