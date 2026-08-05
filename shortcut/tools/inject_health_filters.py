@@ -14,12 +14,10 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    "steps": {"type": "步数", "days": 1, "group": "Day", "limit": 1},
+    "steps": {"type": "步数", "days": 1},
     "walking_running_distance": {
         "type": "步行+跑步距离",
         "days": 1,
-        "group": "Day",
-        "limit": 1,
     },
     "active_energy": {
         "type": "活动能量",
@@ -36,8 +34,6 @@ METRICS: dict[str, dict[str, Any]] = {
     "stand_hours": {
         "type": "站立小时数",
         "days": 1,
-        "group": "Day",
-        "limit": 1,
     },
     "heart_rate": {"type": "心率", "days": 7, "limit": 1},
     "resting_heart_rate": {
@@ -204,8 +200,19 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
         return
     group = str(uuid.uuid4())
     endpoint_uuid = str(uuid.uuid4())
-    endpoint = {"WFWorkflowActionIdentifier": "is.workflow.actions.url", "WFWorkflowActionParameters": {"WFURLActionURL": "", "CustomOutputName": "HAEndpoint", "UUID": endpoint_uuid}}
-    url_token = _token({"OutputUUID": endpoint_uuid, "Type": "ActionOutput", "OutputName": "URL"})
+    # Import questions reliably populate a Text action on current iOS. URL
+    # action parameters can be cleared during import, leaving no shared URL.
+    endpoint = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.text",
+        "WFWorkflowActionParameters": {
+            "WFTextActionText": "",
+            "CustomOutputName": "HAEndpoint",
+            "UUID": endpoint_uuid,
+        },
+    }
+    url_token = _token(
+        {"OutputUUID": endpoint_uuid, "Type": "ActionOutput", "OutputName": "Text"}
+    )
     get_uuid = str(uuid.uuid4())
     get_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
@@ -525,7 +532,8 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     if endpoint_index is None:
         raise ValueError("Shared HA endpoint action not found")
     questions[0]["ActionIndex"] = endpoint_index
-    questions[0]["ParameterKey"] = "WFURLActionURL"
+    questions[0]["ParameterKey"] = "WFTextActionText"
+    questions[0]["DefaultValue"] = ""
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("wb") as file_handle:

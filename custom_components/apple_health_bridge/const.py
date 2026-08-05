@@ -76,7 +76,9 @@ KNOWN_HEALTH_METRICS: Final = {
 WIFI_FIELDS: Final = {
     "ssid": {"name": "Wi-Fi 名称", "icon": "mdi:wifi"},
     "bssid": {"name": "Wi-Fi BSSID", "icon": "mdi:router-wireless"},
-    "channel": {"name": "Wi-Fi 信道", "icon": "mdi:access-point"},
-    "standard": {"name": "Wi-Fi 标准", "icon": "mdi:wifi-cog"},
-    "rate": {"name": "Wi-Fi 速率", "icon": "mdi:speedometer", "unit": "Mbps"},
 }
+
+# These entities existed in early releases but are neither collected by the
+# shortcut nor useful for this integration. They are removed from the entity
+# registry during setup so existing installations do not retain dead entries.
+REMOVED_WIFI_FIELDS: Final = {"channel", "standard", "rate"}

@@ -9,9 +9,10 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from .const import KNOWN_HEALTH_METRICS, WIFI_FIELDS
+from .const import DOMAIN, KNOWN_HEALTH_METRICS, REMOVED_WIFI_FIELDS, WIFI_FIELDS
 from .entity import AppleHealthBridgeEntity
 from .manager import AppleHealthBridgeManager
 
@@ -23,6 +24,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensors and add new metric entities at runtime."""
     manager: AppleHealthBridgeManager = entry.runtime_data
+    registry = er.async_get(hass)
+    for field in REMOVED_WIFI_FIELDS:
+        entity_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_wifi_{field}"
+        )
+        if entity_id:
+            registry.async_remove(entity_id)
     # Always expose the supported Health entities.  They remain unavailable
     # until the shortcut uploads a value, which makes setup observable even
     # when HealthKit has not returned a sample yet.

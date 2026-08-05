@@ -35,11 +35,11 @@ class ProtocolTests(unittest.TestCase):
                 "timestamp": "2026-08-03T10:30:00+08:00",
                 "health": {"steps": {"value": "1234", "unit": "steps"}},
                 "location": {"latitude": 31.2, "longitude": 121.4, "accuracy": 8},
-                "wifi": {"ssid": "Home", "channel": 149, "rate": 1200},
+                "wifi": {"ssid": "Home", "bssid": "AA:BB:CC:DD:EE:FF"},
             }
         )
         self.assertEqual(result["health"]["steps"]["value"], 1234.0)
-        self.assertEqual(result["wifi"]["channel"], 149)
+        self.assertEqual(result["wifi"]["bssid"], "AA:BB:CC:DD:EE:FF")
 
     def test_requires_data_section(self) -> None:
         with self.assertRaises(protocol.PayloadError):
@@ -57,7 +57,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_rejects_unknown_wifi_field(self) -> None:
         with self.assertRaises(protocol.PayloadError):
-            protocol.validate_payload({"wifi": {"password": "secret"}})
+            protocol.validate_payload({"wifi": {"channel": 149}})
 
     def test_rejects_non_finite_number(self) -> None:
         with self.assertRaises(protocol.PayloadError):
