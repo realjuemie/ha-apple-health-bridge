@@ -110,10 +110,10 @@ FORM_VALUE_OUTPUTS = {
 
 # These metrics are cumulative and are commonly written by both an iPhone and
 # an Apple Watch.  Shortcuts exposes the raw samples from every source, while
-# the Health app de-duplicates them.  A negated Source predicate is not reliable
-# across iOS releases (and on some releases is silently ignored), so the
-# injector prefers the canonical Apple Watch source explicitly and falls back
-# to the unfiltered query for iPhone-only users.
+# the Health app de-duplicates them.  The Source value is the user's actual
+# iPhone name (and can be customized), not the literal string ``iPhone``.  The
+# injector therefore compares Source against the runtime device name and falls
+# back to the unfiltered query for iPhone-only users.
 SOURCE_FALLBACK_OUTPUTS = {
     "StepsSamples",
     "DistanceSamples",
@@ -316,24 +316,36 @@ def _today_filter() -> dict[str, Any]:
     }
 
 
-def _source_watch_filter() -> dict[str, Any]:
-    """Match samples written by the canonical Apple Watch source.
+def _source_not_current_device_filter(
+    device_uuid: str, device_name: str = "CurrentDeviceName"
+) -> dict[str, Any]:
+    """Match samples whose source is not the device running the shortcut.
 
-    The Shortcuts picker exposes this source as ``Apple Watch`` even though
-    the underlying HealthKit source revision has a device-specific name.  A
-    positive equality predicate is supported by HealthKit on all iOS versions
-    where the negative ``Source is not iPhone`` workaround is flaky.
+    ``HKSource.name`` follows the user's device name, so a literal ``iPhone``
+    does not match phones renamed by their owner.  Shortcuts supports a text
+    token in predicate values; using the Get Device Details output keeps this
+    filter valid for renamed phones and iPhone-only installations.
     """
     return {
         "Bounded": True,
-        "Operator": 4,
+        "Operator": 5,
         "Property": "Source",
         "Removable": False,
         "Values": {
-            "Enumeration": {
-                "Value": "Apple Watch",
-                "WFSerializationType": "WFStringSubstitutableState",
-            }
+            "String": {
+                "Value": {
+                    "attachmentsByRange": {
+                        "{0, 1}": {
+                            "OutputUUID": device_uuid,
+                            "OutputName": device_name,
+                            "Type": "ActionOutput",
+                        }
+                    },
+                    "string": "\ufffc",
+                },
+                "WFSerializationType": "WFTextTokenString",
+            },
+            "Unit": 4,
         },
     }
 
@@ -446,8 +458,31 @@ def _source_fallback_actions(
 
 
 def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
-    """Prefer Apple Watch samples, with an iPhone-only fallback."""
+    """Prefer non-iPhone samples, with an iPhone-only fallback."""
     actions = shortcut.get("WFWorkflowActions", [])
+    device_uuid = str(uuid.uuid4())
+    device_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.getdevicedetails",
+        "WFWorkflowActionParameters": {
+            "WFDeviceDetail": "Device Name",
+            "CustomOutputName": "CurrentDeviceName",
+            "UUID": device_uuid,
+        },
+    }
+    authorization_index = next(
+        (
+            i
+            for i, action in enumerate(actions)
+            if action.get("WFWorkflowActionIdentifier")
+            == "is.workflow.actions.filter.health.quantity"
+            and action.get("WFWorkflowActionParameters", {}).get("CustomOutputName")
+            == "HealthAuthorization"
+        ),
+        None,
+    )
+    if authorization_index is None:
+        raise ValueError("Consolidated Health authorization action not found")
+    actions.insert(authorization_index + 1, device_action)
     injected = 0
     for base_name in SOURCE_FALLBACK_OUTPUTS:
         preferred = next(
@@ -479,7 +514,7 @@ def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
             "WFActionParameterFilterTemplates"
         ]
         if not any(row.get("Property") == "Source" for row in templates):
-            templates.insert(1, _source_watch_filter())
+            templates.insert(1, _source_not_current_device_filter(device_uuid))
         preferred_params["CustomOutputName"] = preferred_name
 
         preferred_index = actions.index(preferred)
