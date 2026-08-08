@@ -298,7 +298,7 @@ def _today_filter() -> dict[str, Any]:
         "Operator": 1002,
         "Property": "Start Date",
         "Removable": False,
-        "Values": {"Number": "7", "Unit": 16},
+        "Values": {"Number": "1", "Unit": 16},
     }
 
 
