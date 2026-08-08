@@ -14,26 +14,22 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    "steps": {"type": "步数", "days": 1, "group": "Day"},
+    "steps": {"type": "步数", "days": 1},
     "walking_running_distance": {
         "type": "步行+跑步距离",
         "days": 1,
-        "group": "Day",
     },
     "active_energy": {
         "type": "活动能量",
         "days": 1,
-        "group": "Day",
     },
     "exercise_minutes": {
         "type": "锻炼分钟数",
         "days": 1,
-        "group": "Day",
     },
     "stand_hours": {
         "type": "站立小时数",
         "days": 1,
-        "group": "Day",
     },
     "heart_rate": {"type": "心率", "days": 7, "limit": 1},
     "resting_heart_rate": {
@@ -57,7 +53,6 @@ METRICS: dict[str, dict[str, Any]] = {
     "floors_climbed": {
         "type": "爬楼层数",
         "days": 1,
-        "group": "Day",
         "limit": 1,
     },
 }
@@ -109,7 +104,13 @@ FORM_VALUE_OUTPUTS = {
     "bssid": "BssidValue",
 }
 
-SUM_OUTPUTS = {"StepsValue", "DistanceValue", "StandValue"}
+SUM_OUTPUTS = {
+    "StepsValue",
+    "DistanceValue",
+    "EnergyValue",
+    "ExerciseValue",
+    "StandValue",
+}
 
 
 def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
@@ -193,7 +194,7 @@ def _inject_daily_sums(shortcut: dict[str, Any]) -> int:
                 },
             }
         )
-    if len(sums) != 3:
+    if len(sums) != len(SUM_OUTPUTS):
         return len(sums)
     for action in actions:
         _replace_output_references(action.get("WFWorkflowActionParameters", {}), replacements)
@@ -414,10 +415,10 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         shortcut = plistlib.load(file_handle)
 
     _inject_selection_persistence(shortcut)
-    # HealthKit's Day grouping produces the daily aggregate directly. Do not
-    # add a second Statistics action: on current iOS it can return an empty
-    # value when fed Health quantity conversions.
-    sum_actions = 0
+    # Fetch the raw samples from the last day and sum their numeric outputs.
+    # Relying on WFHKSampleFilteringGroupBy=Day can return an empty grouped
+    # object on some iOS versions, which makes the entities unavailable.
+    sum_actions = _inject_daily_sums(shortcut)
 
     found: set[str] = set()
     post_actions = 0
@@ -508,6 +509,10 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
+    if sum_actions != len(SUM_OUTPUTS):
+        raise ValueError(
+            f"Expected {len(SUM_OUTPUTS)} daily sum actions, found {sum_actions}"
+        )
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
