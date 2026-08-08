@@ -110,7 +110,7 @@ if @Selected contains "站立小时" {
         const StandUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StandSamples}", "WFContentItemPropertyName": "Unit"})
         const StandValue = getNumbers(StandMeasurements)
         if StandValue {
-            @Metric = {"name": "站立小时"}
+            @Metric = {"name": "站立时间"}
             @Metric = setValue(@Metric, "unit", "{StandUnit}")
             @Metric = setValue(@Metric, "value", "{StandValue}")
             @HealthData = setValue(@HealthData, "stand_hours", "{@Metric}")

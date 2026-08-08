@@ -24,13 +24,11 @@ METRICS: dict[str, dict[str, Any]] = {
         "type": "活动能量",
         "days": 1,
         "group": "Day",
-        "limit": 1,
     },
     "exercise_minutes": {
         "type": "锻炼分钟数",
         "days": 1,
         "group": "Day",
-        "limit": 1,
     },
     "stand_hours": {
         "type": "站立小时数",

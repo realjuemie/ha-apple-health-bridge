@@ -41,6 +41,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(result["health"]["steps"]["value"], 1234.0)
         self.assertEqual(result["wifi"]["bssid"], "AA:BB:CC:DD:EE:FF")
 
+    def test_localized_form_number_is_normalized(self) -> None:
+        result = protocol.validate_payload(
+            {"health": {"steps": {"value": "1,234 步"}}}
+        )
+        self.assertEqual(result["health"]["steps"]["value"], 1234.0)
+
+        result = protocol.validate_payload(
+            {"health": {"steps": {"value": "12,5"}}}
+        )
+        self.assertEqual(result["health"]["steps"]["value"], 12.5)
+
     def test_requires_data_section(self) -> None:
         with self.assertRaises(protocol.PayloadError):
             protocol.validate_payload({"version": 1})

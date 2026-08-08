@@ -124,10 +124,29 @@ def _wifi(value: Any) -> dict[str, Any]:
 
 def _number(value: Any, path: str) -> int | float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        try:
-            value = float(value)
-        except (TypeError, ValueError) as err:
-            raise PayloadError(f"{path} 必须是数字") from err
+        if isinstance(value, str):
+            text = value.strip().replace("\u00a0", " ").replace("\u202f", " ")
+            # Shortcuts may localize a form value (for example, ``1,234 步``)
+            # while serializing a numeric output. Accept the leading numeric
+            # token and discard only a display unit, never arbitrary text.
+            match = re.match(r"^[+-]?(?:\d[\d, ]*(?:\.\d+)?|\.\d+)", text)
+            if match:
+                token = match.group(0).replace(" ", "")
+                if "," in token and "." not in token:
+                    groups = token.split(",")
+                    token = (
+                        token.replace(",", ".")
+                        if len(groups) == 2 and len(groups[1]) != 3
+                        else token.replace(",", "")
+                    )
+                else:
+                    token = token.replace(",", "")
+                try:
+                    value = float(token)
+                except ValueError:
+                    value = None
+        if not isinstance(value, (int, float)):
+            raise PayloadError(f"{path} 必须是数字")
     if not math.isfinite(value):
         raise PayloadError(f"{path} 必须是有限数字")
     return value

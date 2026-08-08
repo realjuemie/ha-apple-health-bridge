@@ -40,7 +40,9 @@ KNOWN_HEALTH_METRICS: Final = {
         "icon": "mdi:timer-outline",
         "device_class": "duration",
     },
-    "stand_hours": {"name": "站立小时", "unit": "h", "icon": "mdi:human-handsup"},
+    # HealthKit's AppleStandTime quantity is a duration reported in minutes.
+    # Keep the stable metric key while exposing the correct unit in HA.
+    "stand_hours": {"name": "站立时间", "unit": "min", "icon": "mdi:human-handsup"},
     "heart_rate": {"name": "心率", "unit": "bpm", "icon": "mdi:heart-pulse"},
     "resting_heart_rate": {
         "name": "静息心率",
