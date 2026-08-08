@@ -48,7 +48,8 @@ if @Selected contains "步数" {
     if StepsSamples {
         const StepsMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsSamples}", "WFContentItemPropertyName": "Value"})
         const StepsUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsSamples}", "WFContentItemPropertyName": "Unit"})
-        const StepsValue = getNumbers(StepsMeasurements)
+        const StepsTotal = statistic("Sum", StepsMeasurements)
+        const StepsValue = getNumbers(StepsTotal)
         if StepsValue {
             @Metric = {"name": "步数"}
             @Metric = setValue(@Metric, "unit", "{StepsUnit}")
@@ -63,7 +64,8 @@ if @Selected contains "步行与跑步距离" {
     if DistanceSamples {
         const DistanceMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceSamples}", "WFContentItemPropertyName": "Value"})
         const DistanceUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceSamples}", "WFContentItemPropertyName": "Unit"})
-        const DistanceValue = getNumbers(DistanceMeasurements)
+        const DistanceTotal = statistic("Sum", DistanceMeasurements)
+        const DistanceValue = getNumbers(DistanceTotal)
         if DistanceValue {
             @Metric = {"name": "步行与跑步距离"}
             @Metric = setValue(@Metric, "unit", "{DistanceUnit}")
@@ -78,7 +80,8 @@ if @Selected contains "活动能量" {
     if EnergySamples {
         const EnergyMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${EnergySamples}", "WFContentItemPropertyName": "Value"})
         const EnergyUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${EnergySamples}", "WFContentItemPropertyName": "Unit"})
-        const EnergyValue = getNumbers(EnergyMeasurements)
+        const EnergyTotal = statistic("Sum", EnergyMeasurements)
+        const EnergyValue = getNumbers(EnergyTotal)
         if EnergyValue {
             @Metric = {"name": "活动能量"}
             @Metric = setValue(@Metric, "unit", "{EnergyUnit}")
@@ -93,7 +96,8 @@ if @Selected contains "锻炼时间" {
     if ExerciseSamples {
         const ExerciseMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${ExerciseSamples}", "WFContentItemPropertyName": "Value"})
         const ExerciseUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${ExerciseSamples}", "WFContentItemPropertyName": "Unit"})
-        const ExerciseValue = getNumbers(ExerciseMeasurements)
+        const ExerciseTotal = statistic("Sum", ExerciseMeasurements)
+        const ExerciseValue = getNumbers(ExerciseTotal)
         if ExerciseValue {
             @Metric = {"name": "锻炼时间"}
             @Metric = setValue(@Metric, "unit", "{ExerciseUnit}")
@@ -108,7 +112,8 @@ if @Selected contains "站立小时" {
     if StandSamples {
         const StandMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StandSamples}", "WFContentItemPropertyName": "Value"})
         const StandUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StandSamples}", "WFContentItemPropertyName": "Unit"})
-        const StandValue = getNumbers(StandMeasurements)
+        const StandTotal = statistic("Sum", StandMeasurements)
+        const StandValue = getNumbers(StandTotal)
         if StandValue {
             @Metric = {"name": "站立时间"}
             @Metric = setValue(@Metric, "unit", "{StandUnit}")
