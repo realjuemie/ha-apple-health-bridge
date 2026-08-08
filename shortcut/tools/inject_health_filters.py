@@ -15,11 +15,13 @@ METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
     # Steps and distance are intentionally left ungrouped. We inspect each
-    # raw sample's Source and choose one source before writing the total.
-    "steps": {"type": "步数", "today": True},
+    # raw sample's Source and choose one source before writing the total. The
+    # legacy rolling-one-day predicate is used here because iOS can return an
+    # empty list for Operator=1002 when the query is not grouped.
+    "steps": {"type": "步数", "days": 1},
     "walking_running_distance": {
         "type": "步行+跑步距离",
-        "today": True,
+        "days": 1,
     },
     "active_energy": {
         "type": "活动能量",
