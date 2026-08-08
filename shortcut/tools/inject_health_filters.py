@@ -14,11 +14,12 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    "steps": {"type": "步数", "today": True, "group": "Day"},
+    # Steps and distance are intentionally left ungrouped. We inspect each
+    # raw sample's Source and choose one source before writing the total.
+    "steps": {"type": "步数", "today": True},
     "walking_running_distance": {
         "type": "步行+跑步距离",
         "today": True,
-        "group": "Day",
     },
     "active_energy": {
         "type": "活动能量",
@@ -112,11 +113,10 @@ FORM_VALUE_OUTPUTS = {
 # an Apple Watch.  Shortcuts exposes the raw samples from every source, while
 # the Health app de-duplicates them.  The Source value is the user's actual
 # iPhone name (and can be customized), not the literal string ``iPhone``.  The
-# injector therefore compares Source against the runtime device name and falls
-# back to the unfiltered query for iPhone-only users.
+# injector therefore compares Source against the runtime device name for the
+# remaining cumulative metrics. Steps and distance are de-duplicated in the
+# shortcut by inspecting every raw sample, so they do not need a Source query.
 SOURCE_FALLBACK_OUTPUTS = {
-    "StepsSamples",
-    "DistanceSamples",
     "EnergySamples",
     "ExerciseSamples",
     "StandSamples",
@@ -693,6 +693,10 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         if identifier == "is.workflow.actions.setvalueforkey":
             dictionary_writes += 1
             dictionary_value = params.get("WFDictionaryValue", {})
+            # A fixed unit (steps/km) is emitted as an ordinary string by
+            # Cherri. Other fields use native magic-variable tokens.
+            if isinstance(dictionary_value, str):
+                continue
             if dictionary_value.get("WFSerializationType") != "WFTextTokenString":
                 raise ValueError("Dictionary value is not a native magic-variable token")
             token = dictionary_value.get("Value", {})
