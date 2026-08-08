@@ -108,6 +108,19 @@ FORM_VALUE_OUTPUTS = {
     "bssid": "BssidValue",
 }
 
+# These metrics are cumulative and are commonly written by both an iPhone and
+# an Apple Watch.  Shortcuts exposes the raw samples from every source, while
+# the Health app de-duplicates them.  The injector therefore builds a small
+# source-selection fallback for these five queries: prefer a non-iPhone source
+# (normally Apple Watch), and fall back to all sources for iPhone-only users.
+SOURCE_FALLBACK_OUTPUTS = {
+    "StepsSamples",
+    "DistanceSamples",
+    "EnergySamples",
+    "ExerciseSamples",
+    "StandSamples",
+}
+
 def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
     return {
         "WFItemType": item_type,
@@ -302,6 +315,218 @@ def _today_filter() -> dict[str, Any]:
     }
 
 
+def _source_not_iphone_filter() -> dict[str, Any]:
+    """Match Health samples whose source is not the current iPhone."""
+    return {
+        "Bounded": True,
+        "Operator": 5,
+        "Property": "Source",
+        "Removable": False,
+        "Values": {
+            "Enumeration": {
+                "Value": "iPhone",
+                "WFSerializationType": "WFStringSubstitutableState",
+            }
+        },
+    }
+
+
+def _output_ref(output_uuid: str, output_name: str) -> dict[str, Any]:
+    return {
+        "OutputUUID": output_uuid,
+        "OutputName": output_name,
+        "Type": "ActionOutput",
+    }
+
+
+def _condition_output_input(output_uuid: str, output_name: str) -> dict[str, Any]:
+    return {
+        "Type": "Variable",
+        "Variable": _token(_output_ref(output_uuid, output_name)),
+    }
+
+
+def _replace_output_with_variable(
+    value: Any, output_uuid: str, output_name: str, variable_name: str
+) -> None:
+    """Replace a magic action-output reference with a variable reference."""
+    if isinstance(value, dict):
+        if (
+            value.get("OutputUUID") == output_uuid
+            and value.get("OutputName") == output_name
+            and value.get("Type") == "ActionOutput"
+        ):
+            value.clear()
+            value.update({"Type": "Variable", "VariableName": variable_name})
+            return
+        for child in value.values():
+            _replace_output_with_variable(child, output_uuid, output_name, variable_name)
+    elif isinstance(value, list):
+        for child in value:
+            _replace_output_with_variable(child, output_uuid, output_name, variable_name)
+
+
+def _contains_output_ref(value: Any, output_uuid: str, output_name: str) -> bool:
+    if isinstance(value, dict):
+        if (
+            value.get("OutputUUID") == output_uuid
+            and value.get("OutputName") == output_name
+            and value.get("Type") == "ActionOutput"
+        ):
+            return True
+        return any(
+            _contains_output_ref(child, output_uuid, output_name)
+            for child in value.values()
+        )
+    if isinstance(value, list):
+        return any(_contains_output_ref(child, output_uuid, output_name) for child in value)
+    return False
+
+
+def _source_fallback_actions(
+    preferred_uuid: str,
+    preferred_name: str,
+    all_uuid: str,
+    all_name: str,
+    variable_name: str,
+    grouping_identifier: str,
+) -> list[dict[str, Any]]:
+    """Build If/Otherwise actions selecting preferred or fallback samples."""
+    return [
+        {
+            "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+            "WFWorkflowActionParameters": {
+                "GroupingIdentifier": grouping_identifier,
+                "WFCondition": 100,
+                "WFControlFlowMode": 0,
+                "WFInput": _condition_output_input(preferred_uuid, preferred_name),
+            },
+        },
+        {
+            "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+            "WFWorkflowActionParameters": {
+                "WFVariableName": variable_name,
+                "WFInput": _token(_output_ref(preferred_uuid, preferred_name)),
+                "GroupingIdentifier": grouping_identifier,
+                "UUID": str(uuid.uuid4()),
+            },
+        },
+        {
+            "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+            "WFWorkflowActionParameters": {
+                "GroupingIdentifier": grouping_identifier,
+                "WFControlFlowMode": 1,
+            },
+        },
+        {
+            "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+            "WFWorkflowActionParameters": {
+                "WFVariableName": variable_name,
+                "WFInput": _token(_output_ref(all_uuid, all_name)),
+                "GroupingIdentifier": grouping_identifier,
+                "UUID": str(uuid.uuid4()),
+            },
+        },
+        {
+            "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+            "WFWorkflowActionParameters": {
+                "GroupingIdentifier": grouping_identifier,
+                "WFControlFlowMode": 2,
+                "UUID": str(uuid.uuid4()),
+            },
+        },
+    ]
+
+
+def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
+    """Prefer a non-iPhone Health source, with an iPhone-only fallback."""
+    actions = shortcut.get("WFWorkflowActions", [])
+    injected = 0
+    for base_name in SOURCE_FALLBACK_OUTPUTS:
+        preferred = next(
+            (
+                action
+                for action in actions
+                if action.get("WFWorkflowActionIdentifier")
+                == "is.workflow.actions.filter.health.quantity"
+                and action.get("WFWorkflowActionParameters", {}).get("CustomOutputName")
+                == base_name
+            ),
+            None,
+        )
+        if preferred is None:
+            raise ValueError(f"Missing cumulative Health filter: {base_name}")
+        preferred_params = preferred["WFWorkflowActionParameters"]
+        preferred_uuid = preferred_params["UUID"]
+        preferred_name = f"{base_name}Preferred"
+        all_name = f"{base_name}All"
+        variable_name = f"{base_name}Selected"
+
+        all_action = deepcopy(preferred)
+        all_params = all_action["WFWorkflowActionParameters"]
+        all_uuid = str(uuid.uuid4())
+        all_params["UUID"] = all_uuid
+        all_params["CustomOutputName"] = all_name
+
+        templates = preferred_params["WFContentItemFilter"]["Value"][
+            "WFActionParameterFilterTemplates"
+        ]
+        if not any(row.get("Property") == "Source" for row in templates):
+            templates.insert(1, _source_not_iphone_filter())
+        preferred_params["CustomOutputName"] = preferred_name
+
+        preferred_index = actions.index(preferred)
+        target_index = next(
+            (
+                i
+                for i in range(preferred_index + 1, len(actions))
+                if actions[i].get("WFWorkflowActionIdentifier")
+                == "is.workflow.actions.conditional"
+                and _contains_output_ref(
+                    actions[i].get("WFWorkflowActionParameters", {}),
+                    preferred_uuid,
+                    base_name,
+                )
+            ),
+            None,
+        )
+        if target_index is None:
+            raise ValueError(f"Missing cumulative condition for {base_name}")
+
+        # Downstream actions consume the selected variable instead of the
+        # preferred query directly.  The variable is set by the fallback
+        # branch immediately before the existing metric condition.
+        end_index = next(
+            (
+                i
+                for i in range(target_index + 1, len(actions))
+                if actions[i].get("WFWorkflowActionIdentifier")
+                == "is.workflow.actions.filter.health.quantity"
+            ),
+            len(actions),
+        )
+        for action in actions[target_index:end_index]:
+            _replace_output_with_variable(
+                action.get("WFWorkflowActionParameters", {}),
+                preferred_uuid,
+                base_name,
+                variable_name,
+            )
+
+        fallback_group = str(uuid.uuid4())
+        additions = [all_action] + _source_fallback_actions(
+            preferred_uuid,
+            preferred_name,
+            all_uuid,
+            all_name,
+            variable_name,
+            fallback_group,
+        )
+        actions[target_index:target_index] = additions
+        injected += 1
+    return injected
+
+
 def _health_params(existing: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     preserved = {
         key: deepcopy(value)
@@ -452,11 +677,18 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         )
         found.add(metric_key)
 
+    source_fallbacks = _inject_source_fallbacks(shortcut)
+
     missing = set(METRICS) - found
     if missing:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
+    if source_fallbacks != len(SOURCE_FALLBACK_OUTPUTS):
+        raise ValueError(
+            f"Expected {len(SOURCE_FALLBACK_OUTPUTS)} source fallbacks, "
+            f"found {source_fallbacks}"
+        )
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
