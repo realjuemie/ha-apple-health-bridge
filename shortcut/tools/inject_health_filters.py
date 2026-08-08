@@ -112,9 +112,10 @@ FORM_VALUE_OUTPUTS = {
 # These metrics are cumulative and are commonly written by both an iPhone and
 # an Apple Watch.  Shortcuts exposes the raw samples from every source, while
 # the Health app de-duplicates them.  The Source value is the user's actual
-# iPhone name (and can be customized), not the literal string ``iPhone``.  The
-# injector therefore prefers the canonical Apple Watch source and falls back
-# to the unfiltered query for iPhone-only users.
+# iPhone name can be customized, and the Apple Watch source name also varies by
+# model/name.  Shortcuts does, however, expose the built-in ``Source is not
+# iPhone`` predicate reliably.  Prefer that branch (which is normally the
+# Apple Watch data) and fall back to all sources for iPhone-only users.
 SOURCE_FALLBACK_OUTPUTS = {
     "StepsSamples",
     "DistanceSamples",
@@ -317,16 +318,22 @@ def _today_filter() -> dict[str, Any]:
     }
 
 
-def _source_watch_filter() -> dict[str, Any]:
-    """Match samples written by the Apple Watch source."""
+def _source_not_iphone_filter() -> dict[str, Any]:
+    """Match samples not written by the iPhone.
+
+    A literal ``Apple Watch`` value is not portable: HealthKit stores the
+    watch's user-visible name (and users can rename it).  The Shortcuts
+    predicate ``Source is not iPhone`` is the portable form and is also the
+    documented workaround for avoiding the duplicate iPhone samples.
+    """
     return {
         "Bounded": True,
-        "Operator": 4,
+        "Operator": 5,
         "Property": "Source",
         "Removable": False,
         "Values": {
             "Enumeration": {
-                "Value": "Apple Watch",
+                "Value": "iPhone",
                 "WFSerializationType": "WFStringSubstitutableState",
             }
         },
@@ -441,7 +448,7 @@ def _source_fallback_actions(
 
 
 def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
-    """Prefer Apple Watch samples, with an iPhone-only fallback."""
+    """Prefer non-iPhone samples, with an iPhone-only fallback."""
     actions = shortcut.get("WFWorkflowActions", [])
     injected = 0
     for base_name in SOURCE_FALLBACK_OUTPUTS:
@@ -474,7 +481,7 @@ def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
             "WFActionParameterFilterTemplates"
         ]
         if not any(row.get("Property") == "Source" for row in templates):
-            templates.insert(1, _source_watch_filter())
+            templates.insert(1, _source_not_iphone_filter())
         preferred_params["CustomOutputName"] = preferred_name
 
         preferred_index = actions.index(preferred)
