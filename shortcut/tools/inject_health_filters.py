@@ -14,22 +14,26 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    "steps": {"type": "步数", "days": 1},
+    "steps": {"type": "步数", "today": True, "group": "Day"},
     "walking_running_distance": {
         "type": "步行+跑步距离",
-        "days": 1,
+        "today": True,
+        "group": "Day",
     },
     "active_energy": {
         "type": "活动能量",
-        "days": 1,
+        "today": True,
+        "group": "Day",
     },
     "exercise_minutes": {
         "type": "锻炼分钟数",
-        "days": 1,
+        "today": True,
+        "group": "Day",
     },
     "stand_hours": {
         "type": "站立小时数",
-        "days": 1,
+        "today": True,
+        "group": "Day",
     },
     "heart_rate": {"type": "心率", "days": 7, "limit": 1},
     "resting_heart_rate": {
@@ -104,15 +108,6 @@ FORM_VALUE_OUTPUTS = {
     "bssid": "BssidValue",
 }
 
-SUM_OUTPUTS = {
-    "StepsValue",
-    "DistanceValue",
-    "EnergyValue",
-    "ExerciseValue",
-    "StandValue",
-}
-
-
 def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
     return {
         "WFItemType": item_type,
@@ -140,68 +135,6 @@ def _url_token(output_uuid: str, output_name: str) -> dict[str, Any]:
         },
         "WFSerializationType": "WFTextTokenString",
     }
-
-
-def _replace_output_references(
-    value: Any, replacements: dict[tuple[str, str], tuple[str, str]]
-) -> None:
-    """Rewrite magic-variable references in an action parameter tree."""
-    if isinstance(value, dict):
-        key = (value.get("OutputUUID"), value.get("OutputName"))
-        if key in replacements:
-            value["OutputUUID"], value["OutputName"] = replacements[key]
-        for child in value.values():
-            _replace_output_references(child, replacements)
-    elif isinstance(value, list):
-        for child in value:
-            _replace_output_references(child, replacements)
-
-
-def _inject_daily_sums(shortcut: dict[str, Any]) -> int:
-    """Sum ordinary numbers produced by Get Numbers for daily Health samples."""
-    actions = shortcut.get("WFWorkflowActions", [])
-    replacements: dict[tuple[str, str], tuple[str, str]] = {}
-    sums: list[dict[str, Any]] = []
-    for action in actions:
-        if action.get("WFWorkflowActionIdentifier") != "is.workflow.actions.detect.number":
-            continue
-        params = action.get("WFWorkflowActionParameters", {})
-        output_name = params.get("CustomOutputName")
-        if output_name not in SUM_OUTPUTS:
-            continue
-        source_uuid = params["UUID"]
-        numeric_name = f"{output_name}Numbers"
-        total_uuid = str(uuid.uuid4())
-        params["CustomOutputName"] = numeric_name
-        replacements[(source_uuid, output_name)] = (total_uuid, output_name)
-        sums.append(
-            {
-                "after": action,
-                "action": {
-                    "WFWorkflowActionIdentifier": "is.workflow.actions.statistics",
-                    "WFWorkflowActionParameters": {
-                        "CustomOutputName": output_name,
-                        "UUID": total_uuid,
-                        "WFInput": _token(
-                            {
-                                "OutputUUID": source_uuid,
-                                "Type": "ActionOutput",
-                                "OutputName": numeric_name,
-                            }
-                        ),
-                        "WFStatisticsOperation": "Sum",
-                    },
-                },
-            }
-        )
-    if len(sums) != len(SUM_OUTPUTS):
-        return len(sums)
-    for action in actions:
-        _replace_output_references(action.get("WFWorkflowActionParameters", {}), replacements)
-    for item in reversed(sums):
-        index = actions.index(item["after"])
-        actions.insert(index + 1, item["action"])
-    return len(sums)
 
 
 def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
@@ -353,6 +286,22 @@ def _recent_filter(days: int) -> dict[str, Any]:
     }
 
 
+def _today_filter() -> dict[str, Any]:
+    """Return the native HealthKit predicate for the current calendar day.
+
+    ``1001`` means "in the last N days", which is a rolling 24-hour window.
+    Shortcuts exports ``1002`` for the Health filter labelled "today".  The
+    Number/Unit pair is retained because iOS includes it in exported filters.
+    """
+    return {
+        "Bounded": True,
+        "Operator": 1002,
+        "Property": "Start Date",
+        "Removable": False,
+        "Values": {"Number": "7", "Unit": 16},
+    }
+
+
 def _health_params(existing: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     preserved = {
         key: deepcopy(value)
@@ -364,7 +313,7 @@ def _health_params(existing: dict[str, Any], spec: dict[str, Any]) -> dict[str, 
             "WFActionParameterFilterPrefix": 1,
             "WFActionParameterFilterTemplates": [
                 _type_filter(spec["type"]),
-                _recent_filter(spec["days"]),
+                _today_filter() if spec.get("today") else _recent_filter(spec["days"]),
             ],
             "WFContentPredicateBoundedDate": False,
         },
@@ -415,10 +364,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         shortcut = plistlib.load(file_handle)
 
     _inject_selection_persistence(shortcut)
-    # Fetch the raw samples from the last day and sum their numeric outputs.
-    # Relying on WFHKSampleFilteringGroupBy=Day can return an empty grouped
-    # object on some iOS versions, which makes the entities unavailable.
-    sum_actions = _inject_daily_sums(shortcut)
+    # HealthKit's Day grouping returns the daily aggregate directly.  Do not
+    # add a second Statistics action: on current iOS it can return an empty
+    # value when fed Health quantity conversions.
 
     found: set[str] = set()
     post_actions = 0
@@ -509,10 +457,6 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
-    if sum_actions != len(SUM_OUTPUTS):
-        raise ValueError(
-            f"Expected {len(SUM_OUTPUTS)} daily sum actions, found {sum_actions}"
-        )
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
