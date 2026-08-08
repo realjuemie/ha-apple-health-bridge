@@ -46,30 +46,12 @@ const PickedItems = chooseFromList(@Choices, "选择本次同步到 Home Assista
 if @Selected contains "步数" {
     const StepsSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "steps"})
     if StepsSamples {
-        @StepsWatchTotal = 0
-        @StepsOtherTotal = 0
-        for StepsItem in StepsSamples {
-            const StepsItemValue = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
-            const StepsItemSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Source"})
-            const StepsItemSource = getText(StepsItemSourceRaw)
-            const StepsItemNumber = getNumbers(StepsItemValue)
-            if StepsItemNumber {
-                if StepsItemSource contains "Watch" {
-                    @StepsWatchTotal = @StepsWatchTotal + StepsItemNumber
-                } else {
-                    @StepsOtherTotal = @StepsOtherTotal + StepsItemNumber
-                }
-            }
-        }
-        const StepsTotal = if @StepsWatchTotal > 0 {
-            @StepsWatchTotal
-        } else {
-            @StepsOtherTotal
-        }
-        const StepsValue = getNumbers(StepsTotal)
+        const StepsMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsSamples}", "WFContentItemPropertyName": "Value"})
+        const StepsUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsSamples}", "WFContentItemPropertyName": "Unit"})
+        const StepsValue = getNumbers(StepsMeasurements)
         if StepsValue {
             @Metric = {"name": "步数"}
-            @Metric = setValue(@Metric, "unit", "steps")
+            @Metric = setValue(@Metric, "unit", "{StepsUnit}")
             @Metric = setValue(@Metric, "value", "{StepsValue}")
             @HealthData = setValue(@HealthData, "steps", "{@Metric}")
         }
@@ -79,30 +61,12 @@ if @Selected contains "步数" {
 if @Selected contains "步行与跑步距离" {
     const DistanceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "walking_running_distance"})
     if DistanceSamples {
-        @DistanceWatchTotal = 0
-        @DistanceOtherTotal = 0
-        for DistanceItem in DistanceSamples {
-            const DistanceItemValue = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
-            const DistanceItemSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Source"})
-            const DistanceItemSource = getText(DistanceItemSourceRaw)
-            const DistanceItemNumber = getNumbers(DistanceItemValue)
-            if DistanceItemNumber {
-                if DistanceItemSource contains "Watch" {
-                    @DistanceWatchTotal = @DistanceWatchTotal + DistanceItemNumber
-                } else {
-                    @DistanceOtherTotal = @DistanceOtherTotal + DistanceItemNumber
-                }
-            }
-        }
-        const DistanceTotal = if @DistanceWatchTotal > 0 {
-            @DistanceWatchTotal
-        } else {
-            @DistanceOtherTotal
-        }
-        const DistanceValue = getNumbers(DistanceTotal)
+        const DistanceMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceSamples}", "WFContentItemPropertyName": "Value"})
+        const DistanceUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceSamples}", "WFContentItemPropertyName": "Unit"})
+        const DistanceValue = getNumbers(DistanceMeasurements)
         if DistanceValue {
             @Metric = {"name": "步行与跑步距离"}
-            @Metric = setValue(@Metric, "unit", "km")
+            @Metric = setValue(@Metric, "unit", "{DistanceUnit}")
             @Metric = setValue(@Metric, "value", "{DistanceValue}")
             @HealthData = setValue(@HealthData, "walking_running_distance", "{@Metric}")
         }

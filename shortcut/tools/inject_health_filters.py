@@ -14,14 +14,12 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    # Steps and distance are intentionally left ungrouped. We inspect each
-    # raw sample's Source and choose one source before writing the total. The
-    # legacy rolling-one-day predicate is used here because iOS can return an
-    # empty list for Operator=1002 when the query is not grouped.
-    "steps": {"type": "步数", "days": 1},
+    # Keep the old, iOS-compatible daily grouping for these two metrics.
+    "steps": {"type": "步数", "days": 1, "group": "Day"},
     "walking_running_distance": {
         "type": "步行+跑步距离",
         "days": 1,
+        "group": "Day",
     },
     "active_energy": {
         "type": "活动能量",
@@ -115,10 +113,11 @@ FORM_VALUE_OUTPUTS = {
 # an Apple Watch.  Shortcuts exposes the raw samples from every source, while
 # the Health app de-duplicates them.  The Source value is the user's actual
 # iPhone name (and can be customized), not the literal string ``iPhone``.  The
-# injector therefore compares Source against the runtime device name for the
-# remaining cumulative metrics. Steps and distance are de-duplicated in the
-# shortcut by inspecting every raw sample, so they do not need a Source query.
+# injector therefore prefers the canonical Apple Watch source and falls back
+# to the unfiltered query for iPhone-only users.
 SOURCE_FALLBACK_OUTPUTS = {
+    "StepsSamples",
+    "DistanceSamples",
     "EnergySamples",
     "ExerciseSamples",
     "StandSamples",
@@ -318,36 +317,18 @@ def _today_filter() -> dict[str, Any]:
     }
 
 
-def _source_not_current_device_filter(
-    device_uuid: str, device_name: str = "CurrentDeviceName"
-) -> dict[str, Any]:
-    """Match samples whose source is not the device running the shortcut.
-
-    ``HKSource.name`` follows the user's device name, so a literal ``iPhone``
-    does not match phones renamed by their owner.  Shortcuts supports a text
-    token in predicate values; using the Get Device Details output keeps this
-    filter valid for renamed phones and iPhone-only installations.
-    """
+def _source_watch_filter() -> dict[str, Any]:
+    """Match samples written by the Apple Watch source."""
     return {
         "Bounded": True,
-        "Operator": 5,
+        "Operator": 4,
         "Property": "Source",
         "Removable": False,
         "Values": {
-            "String": {
-                "Value": {
-                    "attachmentsByRange": {
-                        "{0, 1}": {
-                            "OutputUUID": device_uuid,
-                            "OutputName": device_name,
-                            "Type": "ActionOutput",
-                        }
-                    },
-                    "string": "\ufffc",
-                },
-                "WFSerializationType": "WFTextTokenString",
-            },
-            "Unit": 4,
+            "Enumeration": {
+                "Value": "Apple Watch",
+                "WFSerializationType": "WFStringSubstitutableState",
+            }
         },
     }
 
@@ -460,31 +441,8 @@ def _source_fallback_actions(
 
 
 def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
-    """Prefer non-iPhone samples, with an iPhone-only fallback."""
+    """Prefer Apple Watch samples, with an iPhone-only fallback."""
     actions = shortcut.get("WFWorkflowActions", [])
-    device_uuid = str(uuid.uuid4())
-    device_action = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.getdevicedetails",
-        "WFWorkflowActionParameters": {
-            "WFDeviceDetail": "Device Name",
-            "CustomOutputName": "CurrentDeviceName",
-            "UUID": device_uuid,
-        },
-    }
-    authorization_index = next(
-        (
-            i
-            for i, action in enumerate(actions)
-            if action.get("WFWorkflowActionIdentifier")
-            == "is.workflow.actions.filter.health.quantity"
-            and action.get("WFWorkflowActionParameters", {}).get("CustomOutputName")
-            == "HealthAuthorization"
-        ),
-        None,
-    )
-    if authorization_index is None:
-        raise ValueError("Consolidated Health authorization action not found")
-    actions.insert(authorization_index + 1, device_action)
     injected = 0
     for base_name in SOURCE_FALLBACK_OUTPUTS:
         preferred = next(
@@ -516,7 +474,7 @@ def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
             "WFActionParameterFilterTemplates"
         ]
         if not any(row.get("Property") == "Source" for row in templates):
-            templates.insert(1, _source_not_current_device_filter(device_uuid))
+            templates.insert(1, _source_watch_filter())
         preferred_params["CustomOutputName"] = preferred_name
 
         preferred_index = actions.index(preferred)
