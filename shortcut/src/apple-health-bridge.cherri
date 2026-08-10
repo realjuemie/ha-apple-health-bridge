@@ -78,12 +78,15 @@ if @Selected contains "步数" {
                 const StepsDateKey = formatDate(StepsStartDate, "Custom", "yyyy-MM-dd")
                 if StepsDateKey == TodayDateKey {
                     const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
-                    const StepsNumber = getNumbers(StepsMeasurement)
+                    const StepsNumbers = getNumbers(StepsMeasurement)
+                    const StepsNumber = getFirstItem(StepsNumbers)
                     // Assign an explicit arithmetic expression here.  StepsNumber
                     // is a magic output from Get Numbers (not a typed number
                     // variable), so Cherri cannot lower `+=` to a Math action.
-                    @StepsTotal = @StepsTotal + StepsNumber
-                    @StepsMatched = true
+                    if StepsNumber {
+                        @StepsTotal = @StepsTotal + StepsNumber
+                        @StepsMatched = true
+                    }
                 }
             }
         }
@@ -113,11 +116,14 @@ if @Selected contains "步行与跑步距离" {
                 const DistanceDateKey = formatDate(DistanceStartDate, "Custom", "yyyy-MM-dd")
                 if DistanceDateKey == TodayDateKey {
                     const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
-                    const DistanceNumber = getNumbers(DistanceMeasurement)
+                    const DistanceNumbers = getNumbers(DistanceMeasurement)
+                    const DistanceNumber = getFirstItem(DistanceNumbers)
                     // See the steps accumulator above: force a native Math action
                     // instead of overwriting the accumulator with the last item.
-                    @DistanceTotal = @DistanceTotal + DistanceNumber
-                    @DistanceMatched = true
+                    if DistanceNumber {
+                        @DistanceTotal = @DistanceTotal + DistanceNumber
+                        @DistanceMatched = true
+                    }
                 }
             }
         }
