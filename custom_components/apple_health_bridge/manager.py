@@ -103,12 +103,29 @@ class AppleHealthBridgeManager:
         self.data["selection"] = selection
         self.store.async_delay_save(lambda: storage_copy(self.data), delay=1)
 
+    @property
+    def health_source(self) -> str | None:
+        """Return the exact HealthKit source selected by the user."""
+        value = self.data.get("health_source")
+        return value if isinstance(value, str) and value else None
+
+    async def async_set_health_source(self, source: str) -> None:
+        """Persist the selected HealthKit source for subsequent runs."""
+        self.data["health_source"] = source
+        self.store.async_delay_save(lambda: storage_copy(self.data), delay=1)
+
+    async def async_clear_health_source(self) -> None:
+        """Forget the selected source so the shortcut can ask again."""
+        self.data.pop("health_source", None)
+        self.store.async_delay_save(lambda: storage_copy(self.data), delay=1)
+
     @staticmethod
     def _empty_data() -> dict[str, Any]:
         return {
             "health": {},
             "location": {},
             "wifi": {},
+            "health_source": None,
             "client_timestamp": None,
             "last_sync": None,
         }

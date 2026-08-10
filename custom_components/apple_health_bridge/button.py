@@ -17,7 +17,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up bridge helper buttons."""
     manager: AppleHealthBridgeManager = entry.runtime_data
-    async_add_entities([ShowSetupInfoButton(manager, entry)])
+    async_add_entities([
+        ShowSetupInfoButton(manager, entry),
+        ResetHealthSourceButton(manager, entry),
+    ])
 
 
 class ShowSetupInfoButton(AppleHealthBridgeEntity, ButtonEntity):
@@ -32,3 +35,17 @@ class ShowSetupInfoButton(AppleHealthBridgeEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         create_setup_notification(self.hass, self.manager)
+
+
+class ResetHealthSourceButton(AppleHealthBridgeEntity, ButtonEntity):
+    """Clear the selected HealthKit source and trigger a new picker run."""
+
+    _attr_name = "重置健康数据来源"
+    _attr_icon = "mdi:source-branch-refresh"
+
+    def __init__(self, manager: AppleHealthBridgeManager, entry: ConfigEntry) -> None:
+        super().__init__(manager, entry)
+        self._attr_unique_id = f"{entry.entry_id}_reset_health_source"
+
+    async def async_press(self) -> None:
+        await self.manager.async_clear_health_source()

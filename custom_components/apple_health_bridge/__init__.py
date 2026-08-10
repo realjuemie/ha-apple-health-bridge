@@ -52,6 +52,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _hass: HomeAssistant, _webhook_id: str, request: Request
     ) -> Response:
         if request.method == "GET":
+            if request.query.get("config") == "source":
+                return Response(
+                    text=manager.health_source or "__AHB_SOURCE_REQUIRED__",
+                    content_type="text/plain",
+                )
             return Response(
                 text=manager.selection or "__AHB_SETUP_REQUIRED__",
                 content_type="text/plain",
@@ -65,8 +70,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if request.content_type == "application/x-www-form-urlencoded":
                 form = await request.post()
                 selection = str(form.get("selection", "")).strip()
+                health_source = str(form.get("health_source", "")).strip()
                 if selection:
                     await manager.async_set_selection(selection)
+                if health_source:
+                    await manager.async_set_health_source(health_source)
                 health = {
                     key: {"value": _form_number(value)}
                     for key, value in form.items()
@@ -88,7 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # request before collecting Health data. Treat it as a valid
                 # successful request, so iOS does not stop the shortcut on a
                 # 400 response before the actual sync starts.
-                if selection and not health and "location" not in raw_payload and not wifi:
+                if (selection or health_source) and not health and "location" not in raw_payload and not wifi:
                     return Response(text="同步项目已保存", content_type="text/plain")
             else:
                 raw_payload = await request.json()

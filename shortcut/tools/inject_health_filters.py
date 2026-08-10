@@ -84,6 +84,8 @@ for _metric_key, _type_name in _HEALTH_TYPE_ENUMERATIONS.items():
     METRICS[_metric_key]["type"] = _type_name
 
 AUTHORIZATION_KEY = "authorize_all"
+DEVICE_PICKER_KEY = "device_picker"
+DEVICE_PICKER_SPEC = {"type": "Steps", "days": 7, "group": "Day"}
 
 # Form fields are deliberately flat: this transport is supported by all
 # Shortcuts versions that support Get Contents of URL, unlike the unavailable
@@ -109,19 +111,13 @@ FORM_VALUE_OUTPUTS = {
     "bssid": "BssidValue",
 }
 
-# These metrics are cumulative and are commonly written by both an iPhone and
-# an Apple Watch.  Shortcuts exposes the raw samples from every source, while
-# the Health app de-duplicates them.  The Source value is the user's actual
-# iPhone name can be customized, and the Apple Watch source name also varies by
-# model/name.  Shortcuts does, however, expose the built-in ``Source is not
-# iPhone`` predicate reliably.  Prefer that branch (which is normally the
-# Apple Watch data) and fall back to all sources for iPhone-only users.
-SOURCE_FALLBACK_OUTPUTS = {
+# These two metrics are commonly written by both an iPhone and an Apple Watch.
+# Shortcuts exposes raw samples from every source, while the Health app
+# de-duplicates them.  The injector adds a dynamic Source predicate whose
+# exact value is chosen from real HealthKit source names on the first run.
+SOURCE_FILTER_OUTPUTS = {
     "StepsSamples",
     "DistanceSamples",
-    "EnergySamples",
-    "ExerciseSamples",
-    "StandSamples",
 }
 
 def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
@@ -153,12 +149,20 @@ def _url_token(output_uuid: str, output_name: str) -> dict[str, Any]:
     }
 
 
+def _url_token_suffix(output_uuid: str, output_name: str, suffix: str) -> dict[str, Any]:
+    """Build a URL token with a literal query suffix."""
+    token = _url_token(output_uuid, output_name)
+    token["Value"]["string"] = f"\ufffc{suffix}"
+    return token
+
+
 def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
     """Persist the first multi-selection through the HA webhook."""
     actions = shortcut.get("WFWorkflowActions", [])
     choose_index = next(
         (i for i, a in enumerate(actions)
-         if a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.choosefromlist"),
+         if a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.choosefromlist"
+         and a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "PickedItems"),
         None,
     )
     if choose_index is None:
@@ -277,6 +281,124 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
             params["WFURL"] = url_token
 
 
+def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
+    """Discover and persist the user's exact HealthKit source name."""
+    actions = shortcut.get("WFWorkflowActions", [])
+    source_sample = next(
+        (a for a in actions if a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "DeviceSamples"),
+        None,
+    )
+    source_choice = next(
+        (a for a in actions if a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "DeviceChoice"),
+        None,
+    )
+    source_text = next(
+        (a for a in actions if a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "DeviceSourceText"),
+        None,
+    )
+    source_variable = next(
+        (a for a in actions if a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.setvariable"
+         and a.get("WFWorkflowActionParameters", {}).get("WFVariableName") == "SelectedSource"),
+        None,
+    )
+    if not all((source_sample, source_choice, source_text, source_variable)):
+        raise ValueError("Source discovery actions not found")
+    if any(
+        a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "SourceConfigResponse"
+        for a in actions
+    ):
+        return
+
+    endpoint = next(
+        (a for a in actions if a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "HAEndpoint"),
+        None,
+    )
+    if endpoint is None:
+        raise ValueError("Compiled Webhook text action not found")
+    endpoint_uuid = endpoint["WFWorkflowActionParameters"]["UUID"]
+    endpoint_token = _url_token(endpoint_uuid, "HAEndpoint")
+    source_endpoint_token = _url_token_suffix(endpoint_uuid, "HAEndpoint", "?config=source")
+    group = str(uuid.uuid4())
+
+    get_uuid = str(uuid.uuid4())
+    get_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
+        "WFWorkflowActionParameters": {
+            "WFURL": source_endpoint_token,
+            "WFHTTPMethod": "GET",
+            "CustomOutputName": "SourceConfigResponse",
+            "UUID": get_uuid,
+        },
+    }
+    text_uuid = str(uuid.uuid4())
+    source_text_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.detect.text",
+        "WFWorkflowActionParameters": {
+            "CustomOutputName": "SourceConfigText",
+            "UUID": text_uuid,
+            "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Content"}),
+        },
+    }
+    if_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+        "WFWorkflowActionParameters": {
+            "GroupingIdentifier": group,
+            "WFCondition": 4,
+            "WFControlFlowMode": 0,
+            "WFConditionalActionString": "__AHB_SOURCE_REQUIRED__",
+            "WFInput": {
+                "Type": "Variable",
+                "Variable": _token({"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}),
+            },
+        },
+    }
+    save_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
+        "WFWorkflowActionParameters": {
+            "WFURL": endpoint_token,
+            "WFHTTPMethod": "POST",
+            "WFHTTPBodyType": "Form",
+            "WFFormValues": {
+                "Value": {
+                    "WFDictionaryFieldValueItems": [
+                        _form_item("health_source", {"Type": "Variable", "VariableName": "SelectedSource"})
+                    ]
+                },
+                "WFSerializationType": "WFDictionaryFieldValue",
+            },
+            "CustomOutputName": "SourceConfigSaveResponse",
+            "UUID": str(uuid.uuid4()),
+            "GroupingIdentifier": group,
+        },
+    }
+    otherwise = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+        "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 1},
+    }
+    saved_var = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+        "WFWorkflowActionParameters": {
+            "WFVariableName": "SelectedSource",
+            "WFInput": _token({"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}),
+            "GroupingIdentifier": group,
+            "UUID": str(uuid.uuid4()),
+        },
+    }
+    end_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
+        "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 2, "UUID": str(uuid.uuid4())},
+    }
+
+    start = actions.index(source_sample)
+    block_end = actions.index(source_variable)
+    source_actions = actions[start : block_end + 1]
+    for action in source_actions:
+        action.setdefault("WFWorkflowActionParameters", {})["GroupingIdentifier"] = group
+    actions[start:start] = [get_action, source_text_action, if_action]
+    after = start + 3 + len(source_actions)
+    actions[after:after] = [save_action, otherwise, saved_var, end_action]
+
+
 def _type_filter(type_name: str) -> dict[str, Any]:
     return {
         "Bounded": True,
@@ -318,22 +440,24 @@ def _today_filter() -> dict[str, Any]:
     }
 
 
-def _source_not_iphone_filter() -> dict[str, Any]:
-    """Match samples not written by the iPhone.
-
-    A literal ``Apple Watch`` value is not portable: HealthKit stores the
-    watch's user-visible name (and users can rename it).  The Shortcuts
-    predicate ``Source is not iPhone`` is the portable form and is also the
-    documented workaround for avoiding the duplicate iPhone samples.
-    """
+def _source_selected_filter(variable_name: str = "SelectedSource") -> dict[str, Any]:
+    """Match the exact source name selected during first-run setup."""
     return {
         "Bounded": True,
-        "Operator": 5,
+        "Operator": 4,
         "Property": "Source",
         "Removable": False,
         "Values": {
             "Enumeration": {
-                "Value": "iPhone",
+                "Value": {
+                    "attachmentsByRange": {
+                        "{0, 1}": {
+                            "Type": "Variable",
+                            "VariableName": variable_name,
+                        }
+                    },
+                    "string": "\ufffc",
+                },
                 "WFSerializationType": "WFStringSubstitutableState",
             }
         },
@@ -447,11 +571,11 @@ def _source_fallback_actions(
     ]
 
 
-def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
-    """Prefer non-iPhone samples, with an iPhone-only fallback."""
+def _inject_source_filters(shortcut: dict[str, Any]) -> int:
+    """Add the persisted exact-source predicate to steps and distance."""
     actions = shortcut.get("WFWorkflowActions", [])
     injected = 0
-    for base_name in SOURCE_FALLBACK_OUTPUTS:
+    for base_name in SOURCE_FILTER_OUTPUTS:
         preferred = next(
             (
                 action
@@ -464,74 +588,18 @@ def _inject_source_fallbacks(shortcut: dict[str, Any]) -> int:
             None,
         )
         if preferred is None:
-            raise ValueError(f"Missing cumulative Health filter: {base_name}")
+            raise ValueError(f"Missing Health filter: {base_name}")
         preferred_params = preferred["WFWorkflowActionParameters"]
-        preferred_uuid = preferred_params["UUID"]
-        preferred_name = f"{base_name}Preferred"
-        all_name = f"{base_name}All"
-        variable_name = f"{base_name}Selected"
-
-        all_action = deepcopy(preferred)
-        all_params = all_action["WFWorkflowActionParameters"]
-        all_uuid = str(uuid.uuid4())
-        all_params["UUID"] = all_uuid
-        all_params["CustomOutputName"] = all_name
-
         templates = preferred_params["WFContentItemFilter"]["Value"][
             "WFActionParameterFilterTemplates"
         ]
-        if not any(row.get("Property") == "Source" for row in templates):
-            templates.insert(1, _source_not_iphone_filter())
-        preferred_params["CustomOutputName"] = preferred_name
-
-        preferred_index = actions.index(preferred)
-        target_index = next(
-            (
-                i
-                for i in range(preferred_index + 1, len(actions))
-                if actions[i].get("WFWorkflowActionIdentifier")
-                == "is.workflow.actions.conditional"
-                and _contains_output_ref(
-                    actions[i].get("WFWorkflowActionParameters", {}),
-                    preferred_uuid,
-                    base_name,
-                )
-            ),
-            None,
-        )
-        if target_index is None:
-            raise ValueError(f"Missing cumulative condition for {base_name}")
-
-        # Downstream actions consume the selected variable instead of the
-        # preferred query directly.  The variable is set by the fallback
-        # branch immediately before the existing metric condition.
-        end_index = next(
-            (
-                i
-                for i in range(target_index + 1, len(actions))
-                if actions[i].get("WFWorkflowActionIdentifier")
-                == "is.workflow.actions.filter.health.quantity"
-            ),
-            len(actions),
-        )
-        for action in actions[target_index:end_index]:
-            _replace_output_with_variable(
-                action.get("WFWorkflowActionParameters", {}),
-                preferred_uuid,
-                base_name,
-                variable_name,
-            )
-
-        fallback_group = str(uuid.uuid4())
-        additions = [all_action] + _source_fallback_actions(
-            preferred_uuid,
-            preferred_name,
-            all_uuid,
-            all_name,
-            variable_name,
-            fallback_group,
-        )
-        actions[target_index:target_index] = additions
+        source_rows = [row for row in templates if row.get("Property") == "Source"]
+        if source_rows:
+            source_rows[0].clear()
+            source_rows[0].update(_source_selected_filter())
+            del source_rows[1:]
+        else:
+            templates.insert(1, _source_selected_filter())
         injected += 1
     return injected
 
@@ -598,6 +666,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         shortcut = plistlib.load(file_handle)
 
     _inject_selection_persistence(shortcut)
+    _inject_source_persistence(shortcut)
     # HealthKit's Day grouping returns the daily aggregate directly.  Do not
     # add a second Statistics action: on current iOS it can return an empty
     # value when fed Health quantity conversions.
@@ -607,6 +676,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     post_action_index: int | None = None
     form_output_ids: dict[str, str] = {}
     health_detail_actions = 0
+    device_picker_actions = 0
     authorization_actions = 0
     dictionary_writes = 0
     measurement_conversions = 0
@@ -681,6 +751,13 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             action["WFWorkflowActionParameters"] = _authorization_params(params)
             authorization_actions += 1
             continue
+        if metric_key == DEVICE_PICKER_KEY:
+            grouping_identifier = params.get("GroupingIdentifier")
+            action["WFWorkflowActionParameters"] = _health_params(params, DEVICE_PICKER_SPEC)
+            if grouping_identifier:
+                action["WFWorkflowActionParameters"]["GroupingIdentifier"] = grouping_identifier
+            device_picker_actions += 1
+            continue
         if metric_key not in METRICS:
             continue
         if metric_key in found:
@@ -690,18 +767,20 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         )
         found.add(metric_key)
 
-    source_fallbacks = _inject_source_fallbacks(shortcut)
+    source_filters = _inject_source_filters(shortcut)
 
     missing = set(METRICS) - found
     if missing:
         raise ValueError(f"Missing HealthKit placeholders: {sorted(missing)}")
     if post_actions != 1:
         raise ValueError(f"Expected one JSON POST action, found {post_actions}")
-    if source_fallbacks != len(SOURCE_FALLBACK_OUTPUTS):
+    if source_filters != len(SOURCE_FILTER_OUTPUTS):
         raise ValueError(
-            f"Expected {len(SOURCE_FALLBACK_OUTPUTS)} source fallbacks, "
-            f"found {source_fallbacks}"
+            f"Expected {len(SOURCE_FILTER_OUTPUTS)} source filters, "
+            f"found {source_filters}"
         )
+    if device_picker_actions != 1:
+        raise ValueError(f"Expected one source discovery query, found {device_picker_actions}")
     if authorization_actions != 1:
         raise ValueError(
             f"Expected one consolidated Health authorization action, "
@@ -709,14 +788,16 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         )
     # Every metric reads Value (or Duration for Sleep); all non-Sleep metrics
     # also read Unit so values are never coerced through Convert Measurement.
-    expected_health_details = len(METRICS) + len(METRICS) - 1
+    # DeviceSources plus the per-source detail action used to de-duplicate the
+    # picker entries add two Health detail operations.
+    expected_health_details = len(METRICS) + len(METRICS) - 1 + 2
     if health_detail_actions != expected_health_details:
         raise ValueError(
             f"Expected {expected_health_details} Health detail actions, "
             f"found {health_detail_actions}"
         )
-    if dictionary_writes != 47:
-        raise ValueError(f"Expected 47 dictionary writes, found {dictionary_writes}")
+    if dictionary_writes != 48:
+        raise ValueError(f"Expected 48 dictionary writes, found {dictionary_writes}")
     if measurement_conversions:
         raise ValueError(
             f"Expected no Convert Measurement actions, found {measurement_conversions}"

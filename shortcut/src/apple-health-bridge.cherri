@@ -17,6 +17,21 @@
 const HealthAuthorization = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "authorize_all"})
 const HAEndpoint = text(haWebhook)
 
+// The injector turns this into a today/Day grouped Steps query.  Its Source
+// details are used to build a one-time device picker, so no literal iPhone or
+// Apple Watch name is required.
+const DeviceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "device_picker"})
+const DeviceSources = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSamples}", "WFContentItemPropertyName": "Source"})
+@DeviceSourceMap = {}
+for DeviceSourceItem in DeviceSources {
+    const DeviceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSourceItem}", "WFContentItemPropertyName": "Source"})
+    const DeviceSourceName = getText(DeviceSourceRaw)
+    @DeviceSourceMap = setValue(@DeviceSourceMap, "{DeviceSourceName}", "{DeviceSourceName}")
+}
+const DeviceChoice = chooseFromList(@DeviceSourceMap, "选择用于同步的健康数据设备", false, false)
+const DeviceSourceText = getText(DeviceChoice)
+@SelectedSource = DeviceSourceText
+
 @Choices = list(
     "步数",
     "步行与跑步距离",
