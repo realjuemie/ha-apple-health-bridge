@@ -70,7 +70,7 @@ if @Selected contains "步数" {
             const StepsSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Source"})
             const StepsSourceNameText = getText(StepsSourceRaw)
             const StepsSourceName = trimWhitespace(StepsSourceNameText)
-            if StepsSourceName contains @SelectedSource {
+            const StepsSampleValue = if StepsSourceName contains @SelectedSource {
                 const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
                 getNumbers(StepsMeasurement)
             } else {
@@ -96,7 +96,7 @@ if @Selected contains "步行与跑步距离" {
             const DistanceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Source"})
             const DistanceSourceNameText = getText(DistanceSourceRaw)
             const DistanceSourceName = trimWhitespace(DistanceSourceNameText)
-            if DistanceSourceName contains @SelectedSource {
+            const DistanceSampleValue = if DistanceSourceName contains @SelectedSource {
                 const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
                 getNumbers(DistanceMeasurement)
             } else {
