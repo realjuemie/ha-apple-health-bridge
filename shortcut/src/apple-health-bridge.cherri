@@ -17,7 +17,7 @@
 const HealthAuthorization = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "authorize_all"})
 const HAEndpoint = text(haWebhook)
 const NowValue = currentDate()
-const TodayStart = adjustDate(NowValue, "Get Start of Day")
+const TodayDateKey = formatDate(NowValue, "Custom", "yyyy-MM-dd")
 
 // The injector turns this into a today/Day grouped Steps query.  Its Source
 // details are used to build a one-time device picker, so no literal iPhone or
@@ -74,13 +74,17 @@ if @Selected contains "步数" {
             const StepsSourceNameText = getText(StepsSourceRaw)
             const StepsSourceName = trimWhitespace(StepsSourceNameText)
             if StepsSourceName == @SelectedSource {
-                const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
-                const StepsNumber = getNumbers(StepsMeasurement)
-                // Assign an explicit arithmetic expression here.  StepsNumber
-                // is a magic output from Get Numbers (not a typed number
-                // variable), so Cherri cannot lower `+=` to a Math action.
-                @StepsTotal = @StepsTotal + StepsNumber
-                @StepsMatched = true
+                const StepsStartDate = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Start Date"})
+                const StepsDateKey = formatDate(StepsStartDate, "Custom", "yyyy-MM-dd")
+                if StepsDateKey == TodayDateKey {
+                    const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
+                    const StepsNumber = getNumbers(StepsMeasurement)
+                    // Assign an explicit arithmetic expression here.  StepsNumber
+                    // is a magic output from Get Numbers (not a typed number
+                    // variable), so Cherri cannot lower `+=` to a Math action.
+                    @StepsTotal = @StepsTotal + StepsNumber
+                    @StepsMatched = true
+                }
             }
         }
         if @StepsMatched {
@@ -105,12 +109,16 @@ if @Selected contains "步行与跑步距离" {
             const DistanceSourceNameText = getText(DistanceSourceRaw)
             const DistanceSourceName = trimWhitespace(DistanceSourceNameText)
             if DistanceSourceName == @SelectedSource {
-                const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
-                const DistanceNumber = getNumbers(DistanceMeasurement)
-                // See the steps accumulator above: force a native Math action
-                // instead of overwriting the accumulator with the last item.
-                @DistanceTotal = @DistanceTotal + DistanceNumber
-                @DistanceMatched = true
+                const DistanceStartDate = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Start Date"})
+                const DistanceDateKey = formatDate(DistanceStartDate, "Custom", "yyyy-MM-dd")
+                if DistanceDateKey == TodayDateKey {
+                    const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
+                    const DistanceNumber = getNumbers(DistanceMeasurement)
+                    // See the steps accumulator above: force a native Math action
+                    // instead of overwriting the accumulator with the last item.
+                    @DistanceTotal = @DistanceTotal + DistanceNumber
+                    @DistanceMatched = true
+                }
             }
         }
         if @DistanceMatched {
