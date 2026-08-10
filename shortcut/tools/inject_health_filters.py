@@ -14,12 +14,13 @@ from typing import Any
 METRICS: dict[str, dict[str, Any]] = {
     # Health sample types are localized enum values in Shortcuts.  This bridge
     # targets Simplified Chinese iOS, so use the names searchable in its editor.
-    # Keep the old, iOS-compatible daily grouping for these two metrics.
-    "steps": {"type": "步数", "days": 1, "group": "Day"},
+    # Steps and distance are summed per selected HealthKit source in the
+    # Shortcut loop below; keep the raw samples instead of using a dynamic
+    # Source predicate, which iOS currently evaluates as an empty query.
+    "steps": {"type": "步数", "days": 1},
     "walking_running_distance": {
         "type": "步行+跑步距离",
         "days": 1,
-        "group": "Day",
     },
     "active_energy": {
         "type": "活动能量",
@@ -112,18 +113,20 @@ FORM_VALUE_OUTPUTS = {
     "latitude": "LatitudeValue",
     "longitude": "LongitudeValue",
     "altitude": "AltitudeValue",
-    "ssid": "WifiNameValue",
-    "bssid": "BssidValue",
 }
 
-# These two metrics are commonly written by both an iPhone and an Apple Watch.
-# Shortcuts exposes raw samples from every source, while the Health app
-# de-duplicates them.  The injector adds a dynamic Source predicate whose
-# exact value is chosen from real HealthKit source names on the first run.
-SOURCE_FILTER_OUTPUTS = {
-    "StepsSamples",
-    "DistanceSamples",
+# Wi-Fi values are sent by separate conditional requests.  Keeping them out
+# of the main form prevents an empty Get Wi-Fi Detail result from invalidating
+# the whole request when the phone is using cellular data.
+OPTIONAL_WIFI_FORM_OUTPUTS = {
+    "WifiSSIDResponse": ("ssid", "WifiNameValue"),
+    "WifiBSSIDResponse": ("bssid", "BssidValue"),
 }
+
+# Source filtering for steps and distance is performed by the Shortcut after
+# reading each sample's Source property.  Dynamic Source predicates are not
+# reliable on iOS when their value is a runtime variable.
+SOURCE_FILTER_OUTPUTS: set[str] = set()
 
 def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str, Any]:
     return {
@@ -592,36 +595,8 @@ def _source_fallback_actions(
 
 
 def _inject_source_filters(shortcut: dict[str, Any]) -> int:
-    """Add the persisted exact-source predicate to steps and distance."""
-    actions = shortcut.get("WFWorkflowActions", [])
-    injected = 0
-    for base_name in SOURCE_FILTER_OUTPUTS:
-        preferred = next(
-            (
-                action
-                for action in actions
-                if action.get("WFWorkflowActionIdentifier")
-                == "is.workflow.actions.filter.health.quantity"
-                and action.get("WFWorkflowActionParameters", {}).get("CustomOutputName")
-                == base_name
-            ),
-            None,
-        )
-        if preferred is None:
-            raise ValueError(f"Missing Health filter: {base_name}")
-        preferred_params = preferred["WFWorkflowActionParameters"]
-        templates = preferred_params["WFContentItemFilter"]["Value"][
-            "WFActionParameterFilterTemplates"
-        ]
-        source_rows = [row for row in templates if row.get("Property") == "Source"]
-        if source_rows:
-            source_rows[0].clear()
-            source_rows[0].update(_source_selected_filter())
-            del source_rows[1:]
-        else:
-            templates.insert(1, _source_selected_filter())
-        injected += 1
-    return injected
+    """Keep metric filters source-neutral; source matching happens in loops."""
+    return 0
 
 
 def _health_params(existing: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
@@ -704,7 +679,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         identifier = action.get("WFWorkflowActionIdentifier")
         params = action.get("WFWorkflowActionParameters", {})
         output_name = params.get("CustomOutputName")
-        if output_name in FORM_VALUE_OUTPUTS.values():
+        if output_name in FORM_VALUE_OUTPUTS.values() or output_name in {
+            output for _, output in OPTIONAL_WIFI_FORM_OUTPUTS.values()
+        }:
             form_output_ids[output_name] = params["UUID"]
 
         # Cherri 2.3.0 keeps the generic rawaction identifier when rawAction()
@@ -719,10 +696,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
                 identifier = "is.workflow.actions.downloadurl"
             action["WFWorkflowActionIdentifier"] = identifier
 
-        if (
-            identifier == "is.workflow.actions.downloadurl"
-            and params.get("CustomOutputName") == "ServerResponse"
-        ):
+        if identifier == "is.workflow.actions.downloadurl" and output_name == "ServerResponse":
             missing_outputs = set(FORM_VALUE_OUTPUTS.values()) - set(form_output_ids)
             if missing_outputs:
                 raise ValueError(f"Missing form value outputs: {sorted(missing_outputs)}")
@@ -746,6 +720,31 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             params["WFHTTPBodyType"] = "Form"
             post_actions += 1
             post_action_index = action_index
+
+        if identifier == "is.workflow.actions.downloadurl" and output_name in OPTIONAL_WIFI_FORM_OUTPUTS:
+            form_key, form_output = OPTIONAL_WIFI_FORM_OUTPUTS[output_name]
+            output_uuid = form_output_ids.get(form_output)
+            if not output_uuid:
+                raise ValueError(f"Missing optional Wi-Fi form value output: {form_output}")
+            params.pop("WFHTTPBodyFile", None)
+            params.pop("WFJSONValues", None)
+            params["WFFormValues"] = {
+                "Value": {
+                    "WFDictionaryFieldValueItems": [
+                        _form_item(
+                            form_key,
+                            {
+                                "Type": "ActionOutput",
+                                "OutputUUID": output_uuid,
+                                "OutputName": form_output,
+                            },
+                        )
+                    ]
+                },
+                "WFSerializationType": "WFDictionaryFieldValue",
+            }
+            params["WFHTTPMethod"] = "POST"
+            params["WFHTTPBodyType"] = "Form"
 
         if identifier == "is.workflow.actions.setvalueforkey":
             dictionary_writes += 1
@@ -808,9 +807,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         )
     # Every metric reads Value (or Duration for Sleep); all non-Sleep metrics
     # also read Unit so values are never coerced through Convert Measurement.
-    # The per-sample Source detail action used by the picker adds one Health
-    # detail operation (the old list-level DeviceSources action was removed).
-    expected_health_details = len(METRICS) + len(METRICS) - 1 + 1
+    # The picker adds one Source detail operation. Steps and distance each add
+    # one Unit detail plus one Source and one Value detail inside their loops.
+    expected_health_details = len(METRICS) + len(METRICS) - 1 + 1 + 2
     if health_detail_actions != expected_health_details:
         raise ValueError(
             f"Expected {expected_health_details} Health detail actions, "

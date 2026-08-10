@@ -56,13 +56,25 @@ const PickedItems = chooseFromList(@Choices, "选择本次同步到 Home Assista
 @WifiData = {}
 @HasLocation = false
 @HasWifi = false
+@HasBssid = false
+@Zero = 0
 
 if @Selected contains "步数" {
     const StepsSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "steps"})
     if StepsSamples {
-        const StepsMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsSamples}", "WFContentItemPropertyName": "Value"})
-        const StepsUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsSamples}", "WFContentItemPropertyName": "Unit"})
-        const StepsValue = getNumbers(StepsMeasurements)
+        const StepsUnitSample = getFirstItem(StepsSamples)
+        const StepsUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsUnitSample}", "WFContentItemPropertyName": "Unit"})
+        const StepsValues = for StepsItem in StepsSamples {
+            const StepsSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Source"})
+            const StepsSourceName = getText(StepsSourceRaw)
+            if StepsSourceName == @SelectedSource {
+                const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
+                getNumbers(StepsMeasurement)
+            } else {
+                number(@Zero)
+            }
+        }
+        const StepsValue = statistic("Sum", StepsValues)
         if StepsValue {
             @Metric = {"name": "步数"}
             @Metric = setValue(@Metric, "unit", "{StepsUnit}")
@@ -75,9 +87,19 @@ if @Selected contains "步数" {
 if @Selected contains "步行与跑步距离" {
     const DistanceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "walking_running_distance"})
     if DistanceSamples {
-        const DistanceMeasurements = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceSamples}", "WFContentItemPropertyName": "Value"})
-        const DistanceUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceSamples}", "WFContentItemPropertyName": "Unit"})
-        const DistanceValue = getNumbers(DistanceMeasurements)
+        const DistanceUnitSample = getFirstItem(DistanceSamples)
+        const DistanceUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceUnitSample}", "WFContentItemPropertyName": "Unit"})
+        const DistanceValues = for DistanceItem in DistanceSamples {
+            const DistanceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Source"})
+            const DistanceSourceName = getText(DistanceSourceRaw)
+            if DistanceSourceName == @SelectedSource {
+                const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
+                getNumbers(DistanceMeasurement)
+            } else {
+                number(@Zero)
+            }
+        }
+        const DistanceValue = statistic("Sum", DistanceValues)
         if DistanceValue {
             @Metric = {"name": "步行与跑步距离"}
             @Metric = setValue(@Metric, "unit", "{DistanceUnit}")
@@ -282,6 +304,7 @@ if @Selected contains "Wi-Fi 信息" {
     }
     if BssidValue {
         @WifiData = setValue(@WifiData, "bssid", "{BssidValue}")
+        @HasBssid = true
     }
 }
 
@@ -301,5 +324,14 @@ if @HasWifi {
 
 const PayloadText = getText(@Payload)
 const ServerResponse = downloadURL(HAEndpoint)
+// Send optional Wi-Fi fields separately.  Empty Get Wi-Fi Detail outputs are
+// not valid form values on iOS, so they must never be included in the main
+// request when the phone is off Wi-Fi.
+if @HasWifi {
+    const WifiSSIDResponse = downloadURL(HAEndpoint)
+}
+if @HasBssid {
+    const WifiBSSIDResponse = downloadURL(HAEndpoint)
+}
 const ResponseText = getText(ServerResponse)
 showNotification("{ResponseText}", "Apple Health Bridge 响应", false)
