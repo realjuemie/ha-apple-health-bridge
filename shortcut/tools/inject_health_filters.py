@@ -398,6 +398,18 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 1},
     }
+    saved_trim_uuid = str(uuid.uuid4())
+    saved_trim_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.text.trimwhitespace",
+        "WFWorkflowActionParameters": {
+            "CustomOutputName": "SavedSourceText",
+            "UUID": saved_trim_uuid,
+            "WFInput": _token(
+                {"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}
+            ),
+            "GroupingIdentifier": group,
+        },
+    }
     saved_var = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
         "WFWorkflowActionParameters": {
@@ -407,6 +419,9 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
             "UUID": str(uuid.uuid4()),
         },
     }
+    saved_var["WFWorkflowActionParameters"]["WFInput"] = _token(
+        {"OutputUUID": saved_trim_uuid, "Type": "ActionOutput", "OutputName": "SavedSourceText"}
+    )
     end_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 2, "UUID": str(uuid.uuid4())},
@@ -419,7 +434,7 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         action.setdefault("WFWorkflowActionParameters", {})["GroupingIdentifier"] = group
     actions[start:start] = [get_action, source_text_action, if_action]
     after = start + 3 + len(source_actions)
-    actions[after:after] = [save_action, otherwise, saved_var, end_action]
+    actions[after:after] = [save_action, otherwise, saved_trim_action, saved_var, end_action]
 
 
 def _type_filter(type_name: str) -> dict[str, Any]:
