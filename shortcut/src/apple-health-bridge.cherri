@@ -21,9 +21,8 @@ const HAEndpoint = text(haWebhook)
 // details are used to build a one-time device picker, so no literal iPhone or
 // Apple Watch name is required.
 const DeviceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "device_picker"})
-const DeviceSources = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSamples}", "WFContentItemPropertyName": "Source"})
 @DeviceSourceMap = {}
-for DeviceSourceItem in DeviceSources {
+for DeviceSourceItem in DeviceSamples {
     const DeviceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSourceItem}", "WFContentItemPropertyName": "Source"})
     const DeviceSourceName = getText(DeviceSourceRaw)
     @DeviceSourceMap = setValue(@DeviceSourceMap, "{DeviceSourceName}", "{DeviceSourceName}")

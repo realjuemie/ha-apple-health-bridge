@@ -85,7 +85,10 @@ for _metric_key, _type_name in _HEALTH_TYPE_ENUMERATIONS.items():
 
 AUTHORIZATION_KEY = "authorize_all"
 DEVICE_PICKER_KEY = "device_picker"
-DEVICE_PICKER_SPEC = {"type": "Steps", "days": 7, "group": "Day"}
+# Source discovery must use individual HealthKit samples.  Grouping by day
+# produces aggregate objects whose Source field is empty, leaving the chooser
+# with no entries.  The actual metric queries below still use daily grouping.
+DEVICE_PICKER_SPEC = {"type": "Steps", "days": 7}
 
 # Form fields are deliberately flat: this transport is supported by all
 # Shortcuts versions that support Get Contents of URL, unlike the unavailable
@@ -125,6 +128,15 @@ def _form_item(key: str, value: dict[str, Any], item_type: int = 0) -> dict[str,
         "WFItemType": item_type,
         "WFKey": {"Value": {"string": key}, "WFSerializationType": "WFTextTokenString"},
         "WFValue": {"Value": value, "WFSerializationType": "WFTextTokenAttachment"},
+    }
+
+
+def _form_text_item(key: str, value: str, item_type: int = 0) -> dict[str, Any]:
+    """Build a literal text field for a form request."""
+    return {
+        "WFItemType": item_type,
+        "WFKey": {"Value": {"string": key}, "WFSerializationType": "WFTextTokenString"},
+        "WFValue": {"Value": {"string": value}, "WFSerializationType": "WFTextTokenString"},
     }
 
 
@@ -317,15 +329,21 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         raise ValueError("Compiled Webhook text action not found")
     endpoint_uuid = endpoint["WFWorkflowActionParameters"]["UUID"]
     endpoint_token = _url_token(endpoint_uuid, "HAEndpoint")
-    source_endpoint_token = _url_token_suffix(endpoint_uuid, "HAEndpoint", "?config=source")
     group = str(uuid.uuid4())
 
     get_uuid = str(uuid.uuid4())
     get_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
         "WFWorkflowActionParameters": {
-            "WFURL": source_endpoint_token,
-            "WFHTTPMethod": "GET",
+            "WFURL": endpoint_token,
+            "WFHTTPMethod": "POST",
+            "WFHTTPBodyType": "Form",
+            "WFFormValues": {
+                "Value": {
+                    "WFDictionaryFieldValueItems": [_form_text_item("config", "source")]
+                },
+                "WFSerializationType": "WFDictionaryFieldValue",
+            },
             "CustomOutputName": "SourceConfigResponse",
             "UUID": get_uuid,
         },
@@ -788,9 +806,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         )
     # Every metric reads Value (or Duration for Sleep); all non-Sleep metrics
     # also read Unit so values are never coerced through Convert Measurement.
-    # DeviceSources plus the per-source detail action used to de-duplicate the
-    # picker entries add two Health detail operations.
-    expected_health_details = len(METRICS) + len(METRICS) - 1 + 2
+    # The per-sample Source detail action used by the picker adds one Health
+    # detail operation (the old list-level DeviceSources action was removed).
+    expected_health_details = len(METRICS) + len(METRICS) - 1 + 1
     if health_detail_actions != expected_health_details:
         raise ValueError(
             f"Expected {expected_health_details} Health detail actions, "

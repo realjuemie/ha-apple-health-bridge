@@ -69,6 +69,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             if request.content_type == "application/x-www-form-urlencoded":
                 form = await request.post()
+                if str(form.get("config", "")).strip() == "source":
+                    return Response(
+                        text=manager.health_source or "__AHB_SOURCE_REQUIRED__",
+                        content_type="text/plain",
+                    )
                 selection = str(form.get("selection", "")).strip()
                 health_source = str(form.get("health_source", "")).strip()
                 if selection:
