@@ -59,26 +59,30 @@ const PickedItems = chooseFromList(@Choices, "选择本次同步到 Home Assista
 @HasLocation = false
 @HasWifi = false
 @HasBssid = false
-@Zero = 0
 
 if @Selected contains "步数" {
     const StepsSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "steps"})
     if StepsSamples {
+        @StepsTotal = 0
+        @StepsMatched = false
         const StepsUnitSample = getFirstItem(StepsSamples)
         const StepsUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsUnitSample}", "WFContentItemPropertyName": "Unit"})
-        const StepsValues = for StepsItem in StepsSamples {
+        for StepsItem in StepsSamples {
             const StepsSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Source"})
             const StepsSourceNameText = getText(StepsSourceRaw)
             const StepsSourceName = trimWhitespace(StepsSourceNameText)
-            const StepsSampleValue = if StepsSourceName contains @SelectedSource {
+            if StepsSourceName == @SelectedSource {
                 const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
-                getNumbers(StepsMeasurement)
-            } else {
-                number(@Zero)
+                const StepsNumber = getNumbers(StepsMeasurement)
+                // Assign an explicit arithmetic expression here.  StepsNumber
+                // is a magic output from Get Numbers (not a typed number
+                // variable), so Cherri cannot lower `+=` to a Math action.
+                @StepsTotal = @StepsTotal + StepsNumber
+                @StepsMatched = true
             }
         }
-        const StepsValue = statistic("Sum", StepsValues)
-        if StepsValue {
+        if @StepsMatched {
+            const StepsValue = number(@StepsTotal)
             @Metric = {"name": "步数"}
             @Metric = setValue(@Metric, "unit", "{StepsUnit}")
             @Metric = setValue(@Metric, "value", "{StepsValue}")
@@ -90,21 +94,25 @@ if @Selected contains "步数" {
 if @Selected contains "步行与跑步距离" {
     const DistanceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "walking_running_distance"})
     if DistanceSamples {
+        @DistanceTotal = 0
+        @DistanceMatched = false
         const DistanceUnitSample = getFirstItem(DistanceSamples)
         const DistanceUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceUnitSample}", "WFContentItemPropertyName": "Unit"})
-        const DistanceValues = for DistanceItem in DistanceSamples {
+        for DistanceItem in DistanceSamples {
             const DistanceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Source"})
             const DistanceSourceNameText = getText(DistanceSourceRaw)
             const DistanceSourceName = trimWhitespace(DistanceSourceNameText)
-            const DistanceSampleValue = if DistanceSourceName contains @SelectedSource {
+            if DistanceSourceName == @SelectedSource {
                 const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
-                getNumbers(DistanceMeasurement)
-            } else {
-                number(@Zero)
+                const DistanceNumber = getNumbers(DistanceMeasurement)
+                // See the steps accumulator above: force a native Math action
+                // instead of overwriting the accumulator with the last item.
+                @DistanceTotal = @DistanceTotal + DistanceNumber
+                @DistanceMatched = true
             }
         }
-        const DistanceValue = statistic("Sum", DistanceValues)
-        if DistanceValue {
+        if @DistanceMatched {
+            const DistanceValue = number(@DistanceTotal)
             @Metric = {"name": "步行与跑步距离"}
             @Metric = setValue(@Metric, "unit", "{DistanceUnit}")
             @Metric = setValue(@Metric, "value", "{DistanceValue}")
