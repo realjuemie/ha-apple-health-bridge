@@ -87,8 +87,10 @@ AUTHORIZATION_KEY = "authorize_all"
 DEVICE_PICKER_KEY = "device_picker"
 # Source discovery must use individual HealthKit samples.  Grouping by day
 # produces aggregate objects whose Source field is empty, leaving the chooser
-# with no entries.  The actual metric queries below still use daily grouping.
-DEVICE_PICKER_SPEC = {"type": "Steps", "days": 7}
+# with no entries.  Keep only the most recent 100 samples so the per-sample
+# Source loop remains responsive even for users with years of Health history.
+# The actual metric queries below still use daily grouping.
+DEVICE_PICKER_SPEC = {"type": "Steps", "days": 7, "limit": 100}
 
 # Form fields are deliberately flat: this transport is supported by all
 # Shortcuts versions that support Get Contents of URL, unlike the unavailable
