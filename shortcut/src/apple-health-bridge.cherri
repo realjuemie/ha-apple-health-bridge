@@ -24,11 +24,13 @@ const DeviceSamples = rawAction("is.workflow.actions.filter.health.quantity", {"
 @DeviceSourceMap = {}
 for DeviceSourceItem in DeviceSamples {
     const DeviceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSourceItem}", "WFContentItemPropertyName": "Source"})
-    const DeviceSourceName = getText(DeviceSourceRaw)
+    const DeviceSourceNameText = getText(DeviceSourceRaw)
+    const DeviceSourceName = trimWhitespace(DeviceSourceNameText)
     @DeviceSourceMap = setValue(@DeviceSourceMap, "{DeviceSourceName}", "{DeviceSourceName}")
 }
 const DeviceChoice = chooseFromList(@DeviceSourceMap, "选择用于同步的健康数据设备", false, false)
-const DeviceSourceText = getText(DeviceChoice)
+const DeviceSourceChoiceText = getText(DeviceChoice)
+const DeviceSourceText = trimWhitespace(DeviceSourceChoiceText)
 @SelectedSource = DeviceSourceText
 
 @Choices = list(
@@ -66,8 +68,9 @@ if @Selected contains "步数" {
         const StepsUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsUnitSample}", "WFContentItemPropertyName": "Unit"})
         const StepsValues = for StepsItem in StepsSamples {
             const StepsSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Source"})
-            const StepsSourceName = getText(StepsSourceRaw)
-            if StepsSourceName == @SelectedSource {
+            const StepsSourceNameText = getText(StepsSourceRaw)
+            const StepsSourceName = trimWhitespace(StepsSourceNameText)
+            if StepsSourceName contains @SelectedSource {
                 const StepsMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${StepsItem}", "WFContentItemPropertyName": "Value"})
                 getNumbers(StepsMeasurement)
             } else {
@@ -91,8 +94,9 @@ if @Selected contains "步行与跑步距离" {
         const DistanceUnit = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceUnitSample}", "WFContentItemPropertyName": "Unit"})
         const DistanceValues = for DistanceItem in DistanceSamples {
             const DistanceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Source"})
-            const DistanceSourceName = getText(DistanceSourceRaw)
-            if DistanceSourceName == @SelectedSource {
+            const DistanceSourceNameText = getText(DistanceSourceRaw)
+            const DistanceSourceName = trimWhitespace(DistanceSourceNameText)
+            if DistanceSourceName contains @SelectedSource {
                 const DistanceMeasurement = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DistanceItem}", "WFContentItemPropertyName": "Value"})
                 getNumbers(DistanceMeasurement)
             } else {

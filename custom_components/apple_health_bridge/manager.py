@@ -54,8 +54,12 @@ class AppleHealthBridgeManager:
             self.data.setdefault("health", {}).update(deepcopy(health))
         if "location" in payload:
             self.data["location"] = deepcopy(payload["location"])
-        if "wifi" in payload:
-            self.data["wifi"] = deepcopy(payload["wifi"])
+        if wifi := payload.get("wifi"):
+            # SSID and BSSID may arrive in separate optional requests when
+            # the phone is on Wi-Fi. Merge fields instead of replacing the
+            # previous dictionary, otherwise the second request erases the
+            # first field and the entity becomes unavailable.
+            self.data.setdefault("wifi", {}).update(deepcopy(wifi))
 
         self.data["client_timestamp"] = payload.get("timestamp")
         self.data["last_sync"] = dt_util.utcnow().isoformat()
