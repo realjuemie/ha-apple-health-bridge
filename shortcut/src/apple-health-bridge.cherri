@@ -16,6 +16,8 @@
 // iOS 仍会显示系统授权页，用户必须在该页确认；快捷指令不能绕过系统授权。
 const HealthAuthorization = rawAction("is.workflow.actions.filter.health.quantity", {"AHBMetric": "authorize_all"})
 const HAEndpoint = text(haWebhook)
+const NowValue = currentDate()
+const TodayStart = adjustDate(NowValue, "Get Start of Day")
 
 // The injector turns this into a today/Day grouped Steps query.  Its Source
 // details are used to build a one-time device picker, so no literal iPhone or
@@ -320,7 +322,6 @@ if @Selected contains "Wi-Fi 信息" {
     }
 }
 
-const NowValue = currentDate()
 const TimestampValue = formatDate(NowValue, "ISO 8601")
 @Payload = {"version": 1}
 @Payload = setValue(@Payload, "timestamp", "{TimestampValue}")

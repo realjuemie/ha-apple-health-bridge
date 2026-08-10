@@ -17,10 +17,10 @@ METRICS: dict[str, dict[str, Any]] = {
     # Steps and distance are summed per selected HealthKit source in the
     # Shortcut loop below; keep the raw samples instead of using a dynamic
     # Source predicate, which iOS currently evaluates as an empty query.
-    "steps": {"type": "步数", "today": True},
+    "steps": {"type": "步数", "today_range": True},
     "walking_running_distance": {
         "type": "步行+跑步距离",
-        "today": True,
+        "today_range": True,
     },
     "active_energy": {
         "type": "活动能量",
@@ -478,6 +478,39 @@ def _today_filter() -> dict[str, Any]:
     }
 
 
+def _calendar_day_range_filter(
+    today_start_uuid: str, now_uuid: str
+) -> dict[str, Any]:
+    """Filter raw samples between local midnight and the captured current time.
+
+    The relative ``Today`` predicate can yield a zero-valued aggregate on
+    ungrouped HealthKit quantity samples. An explicit range keeps the raw
+    samples required for source de-duplication without using rolling 24 hours.
+    """
+    return {
+        "Bounded": True,
+        "Operator": 1003,
+        "Property": "Start Date",
+        "Removable": False,
+        "Values": {
+            "Date": _token(
+                {
+                    "OutputName": "TodayStart",
+                    "OutputUUID": today_start_uuid,
+                    "Type": "ActionOutput",
+                }
+            ),
+            "AnotherDate": _token(
+                {
+                    "OutputName": "NowValue",
+                    "OutputUUID": now_uuid,
+                    "Type": "ActionOutput",
+                }
+            ),
+        },
+    }
+
+
 def _source_selected_filter(variable_name: str = "SelectedSource") -> dict[str, Any]:
     """Match the exact source name selected during first-run setup."""
     return {
@@ -614,18 +647,31 @@ def _inject_source_filters(shortcut: dict[str, Any]) -> int:
     return 0
 
 
-def _health_params(existing: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+def _health_params(
+    existing: dict[str, Any],
+    spec: dict[str, Any],
+    date_output_ids: dict[str, str],
+) -> dict[str, Any]:
     preserved = {
         key: deepcopy(value)
         for key, value in existing.items()
         if key in {"UUID", "CustomOutputName"}
     }
+    if spec.get("today_range"):
+        date_filter = _calendar_day_range_filter(
+            date_output_ids["TodayStart"], date_output_ids["NowValue"]
+        )
+    elif spec.get("today"):
+        date_filter = _today_filter()
+    else:
+        date_filter = _recent_filter(spec["days"])
+
     preserved["WFContentItemFilter"] = {
         "Value": {
             "WFActionParameterFilterPrefix": 1,
             "WFActionParameterFilterTemplates": [
                 _type_filter(spec["type"]),
-                _today_filter() if spec.get("today") else _recent_filter(spec["days"]),
+                date_filter,
             ],
             "WFContentPredicateBoundedDate": False,
         },
@@ -680,6 +726,20 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     # HealthKit's Day grouping returns the daily aggregate directly.  Do not
     # add a second Statistics action: on current iOS it can return an empty
     # value when fed Health quantity conversions.
+
+    date_output_ids = {
+        params["CustomOutputName"]: params["UUID"]
+        for action in shortcut.get("WFWorkflowActions", [])
+        if (params := action.get("WFWorkflowActionParameters", {})).get(
+            "CustomOutputName"
+        )
+        in {"TodayStart", "NowValue"}
+    }
+    missing_date_outputs = {"TodayStart", "NowValue"} - set(date_output_ids)
+    if missing_date_outputs:
+        raise ValueError(
+            f"Missing calendar-day outputs: {sorted(missing_date_outputs)}"
+        )
 
     found: set[str] = set()
     post_actions = 0
@@ -787,7 +847,9 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
             continue
         if metric_key == DEVICE_PICKER_KEY:
             grouping_identifier = params.get("GroupingIdentifier")
-            action["WFWorkflowActionParameters"] = _health_params(params, DEVICE_PICKER_SPEC)
+            action["WFWorkflowActionParameters"] = _health_params(
+                params, DEVICE_PICKER_SPEC, date_output_ids
+            )
             if grouping_identifier:
                 action["WFWorkflowActionParameters"]["GroupingIdentifier"] = grouping_identifier
             device_picker_actions += 1
@@ -797,7 +859,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
         if metric_key in found:
             raise ValueError(f"Duplicate HealthKit placeholder: {metric_key}")
         action["WFWorkflowActionParameters"] = _health_params(
-            params, METRICS[metric_key]
+            params, METRICS[metric_key], date_output_ids
         )
         found.add(metric_key)
 
