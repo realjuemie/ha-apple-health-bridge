@@ -47,13 +47,23 @@ class AppleHealthBridgeManager:
             self.data.update(stored)
             self.is_first_setup = False
 
-    async def async_update(self, payload: dict[str, Any]) -> set[str]:
+    async def async_update(
+        self,
+        payload: dict[str, Any],
+        *,
+        wifi_available: bool | None = None,
+    ) -> set[str]:
         """Merge a validated payload and notify entities."""
         old_metric_keys = set(self.metrics)
         if health := payload.get("health"):
             self.data.setdefault("health", {}).update(deepcopy(health))
         if "location" in payload:
             self.data["location"] = deepcopy(payload["location"])
+        if wifi_available is not None:
+            # The main Shortcut request reports connection state every run.
+            # Clear old values first so a cellular sync makes both Wi-Fi
+            # sensors unavailable and partial reads cannot retain stale data.
+            self.data["wifi"] = {}
         if wifi := payload.get("wifi"):
             # SSID and BSSID may arrive in separate optional requests when
             # the phone is on Wi-Fi. Merge fields instead of replacing the

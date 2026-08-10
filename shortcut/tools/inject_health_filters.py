@@ -732,6 +732,15 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
                     "OutputUUID": form_output_ids[output_name],
                     "OutputName": output_name,
                 }))
+            # Always tell HA whether Wi-Fi details are available for this run.
+            # A false value clears stale SSID/BSSID state without affecting the
+            # health payload sent over a public webhook.
+            items.append(
+                _form_item(
+                    "wifi_available",
+                    {"Type": "Variable", "VariableName": "HasWifi"},
+                )
+            )
             params["WFFormValues"] = {
                 "Value": {"WFDictionaryFieldValueItems": items},
                 "WFSerializationType": "WFDictionaryFieldValue",

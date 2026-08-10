@@ -51,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def handle_webhook(
         _hass: HomeAssistant, _webhook_id: str, request: Request
     ) -> Response:
+        wifi_available: bool | None = None
         if request.method == "GET":
             if request.query.get("config") == "source":
                 return Response(
@@ -97,6 +98,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 }
                 if wifi:
                     raw_payload["wifi"] = wifi
+                if "wifi_available" in form:
+                    wifi_available = str(
+                        form.get("wifi_available", "")
+                    ).strip().casefold() in {
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                        "是",
+                    }
                 # The shortcut saves the first-run selection in a separate
                 # request before collecting Health data. Treat it as a valid
                 # successful request, so iOS does not stop the shortcut on a
@@ -125,7 +136,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 status=HTTPStatus.BAD_REQUEST,
             )
 
-        new_metrics = await manager.async_update(payload)
+        new_metrics = await manager.async_update(
+            payload, wifi_available=wifi_available
+        )
         parts = [f"健康数据 {len(payload.get('health', {}))} 项"]
         if "location" in payload:
             parts.append("位置")
