@@ -211,7 +211,11 @@ def _inject_selection_persistence(shortcut: dict[str, Any]) -> None:
         },
     }
     text_uuid = str(uuid.uuid4())
-    saved_text = {"WFWorkflowActionIdentifier": "is.workflow.actions.detect.text", "WFWorkflowActionParameters": {"CustomOutputName": "ConfigText", "UUID": text_uuid, "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Content"})}}
+    # Get Contents of URL returns its custom action output directly.  The
+    # injected `Content` field is not a stable output name on iOS and can
+    # become empty on subsequent runs, which makes the chooser appear every
+    # time.  Match the native Cherri output reference instead.
+    saved_text = {"WFWorkflowActionIdentifier": "is.workflow.actions.detect.text", "WFWorkflowActionParameters": {"CustomOutputName": "ConfigText", "UUID": text_uuid, "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "ConfigResponse"})}}
     if_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {
@@ -365,7 +369,9 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         "WFWorkflowActionParameters": {
             "CustomOutputName": "SourceConfigText",
             "UUID": text_uuid,
-            "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Content"}),
+            # Reference the named download output, not a synthetic Content
+            # property (see the selection persistence note above).
+            "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigResponse"}),
         },
     }
     # Load the saved source into the working variable before the conditional
