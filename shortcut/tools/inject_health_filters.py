@@ -17,10 +17,10 @@ METRICS: dict[str, dict[str, Any]] = {
     # Steps and distance are summed per selected HealthKit source in the
     # Shortcut loop below; keep the raw samples instead of using a dynamic
     # Source predicate, which iOS currently evaluates as an empty query.
-    "steps": {"type": "步数", "days": 1},
+    "steps": {"type": "步数", "today": True},
     "walking_running_distance": {
         "type": "步行+跑步距离",
-        "days": 1,
+        "today": True,
     },
     "active_energy": {
         "type": "活动能量",
@@ -867,7 +867,7 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
     # also read Unit so values are never coerced through Convert Measurement.
     # The picker adds one Source detail operation. Steps and distance each add
     # Source and Start Date details in addition to their Value/Unit details.
-    expected_health_details = len(METRICS) + len(METRICS) - 1 + 1 + 4
+    expected_health_details = len(METRICS) + len(METRICS) - 1 + 1 + 2
     if health_detail_actions != expected_health_details:
         raise ValueError(
             f"Expected {expected_health_details} Health detail actions, "
