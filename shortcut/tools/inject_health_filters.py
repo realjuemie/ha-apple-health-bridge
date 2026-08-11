@@ -362,6 +362,30 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
             "WFInput": _token({"OutputUUID": get_uuid, "Type": "ActionOutput", "OutputName": "Content"}),
         },
     }
+    # Load the saved source into the working variable before the conditional
+    # starts.  Some iOS versions do not reliably retain variables assigned in
+    # an Otherwise branch when the branch is skipped on a later run.
+    saved_source_trim_uuid = str(uuid.uuid4())
+    saved_source_trim_action = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.text.trimwhitespace",
+        "WFWorkflowActionParameters": {
+            "CustomOutputName": "SavedSourceText",
+            "UUID": saved_source_trim_uuid,
+            "WFInput": _token(
+                {"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}
+            ),
+        },
+    }
+    saved_source_preload = {
+        "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
+        "WFWorkflowActionParameters": {
+            "WFVariableName": "SelectedSource",
+            "WFInput": _token(
+                {"OutputUUID": saved_source_trim_uuid, "Type": "ActionOutput", "OutputName": "SavedSourceText"}
+            ),
+            "UUID": str(uuid.uuid4()),
+        },
+    }
     if_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {
@@ -398,30 +422,6 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 1},
     }
-    saved_trim_uuid = str(uuid.uuid4())
-    saved_trim_action = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.text.trimwhitespace",
-        "WFWorkflowActionParameters": {
-            "CustomOutputName": "SavedSourceText",
-            "UUID": saved_trim_uuid,
-            "WFInput": _token(
-                {"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}
-            ),
-            "GroupingIdentifier": group,
-        },
-    }
-    saved_var = {
-        "WFWorkflowActionIdentifier": "is.workflow.actions.setvariable",
-        "WFWorkflowActionParameters": {
-            "WFVariableName": "SelectedSource",
-            "WFInput": _token({"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}),
-            "GroupingIdentifier": group,
-            "UUID": str(uuid.uuid4()),
-        },
-    }
-    saved_var["WFWorkflowActionParameters"]["WFInput"] = _token(
-        {"OutputUUID": saved_trim_uuid, "Type": "ActionOutput", "OutputName": "SavedSourceText"}
-    )
     end_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.conditional",
         "WFWorkflowActionParameters": {"GroupingIdentifier": group, "WFControlFlowMode": 2, "UUID": str(uuid.uuid4())},
@@ -432,9 +432,15 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
     source_actions = actions[start : block_end + 1]
     for action in source_actions:
         action.setdefault("WFWorkflowActionParameters", {})["GroupingIdentifier"] = group
-    actions[start:start] = [get_action, source_text_action, if_action]
-    after = start + 3 + len(source_actions)
-    actions[after:after] = [save_action, otherwise, saved_trim_action, saved_var, end_action]
+    actions[start:start] = [
+        get_action,
+        source_text_action,
+        saved_source_trim_action,
+        saved_source_preload,
+        if_action,
+    ]
+    after = start + 5 + len(source_actions)
+    actions[after:after] = [save_action, otherwise, end_action]
 
 
 def _type_filter(type_name: str) -> dict[str, Any]:
@@ -732,15 +738,11 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
                     "OutputUUID": form_output_ids[output_name],
                     "OutputName": output_name,
                 }))
-            # Report Wi-Fi availability on every main request. Home
-            # Assistant uses this to clear stale SSID/BSSID values on
-            # cellular data; health data remains unaffected.
-            items.append(
-                _form_item(
-                    "wifi_available",
-                    {"Type": "Variable", "VariableName": "HasWifi"},
-                )
-            )
+            # Always clear cached Wi-Fi values in the main request. The
+            # optional SSID/BSSID requests that follow it repopulate them
+            # when Wi-Fi is connected. A literal avoids iOS treating a false
+            # Boolean variable as a missing dictionary value.
+            items.append(_form_text_item("wifi_available", "0"))
             params["WFFormValues"] = {
                 "Value": {"WFDictionaryFieldValueItems": items},
                 "WFSerializationType": "WFDictionaryFieldValue",

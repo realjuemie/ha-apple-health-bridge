@@ -90,7 +90,7 @@ if @Selected contains "步数" {
                 }
             }
         }
-        if @StepsMatched {
+        if @StepsMatched == 1 {
             const StepsValue = number(@StepsTotal)
             @Metric = {"name": "步数"}
             @Metric = setValue(@Metric, "unit", "{StepsUnit}")
@@ -127,7 +127,7 @@ if @Selected contains "步行与跑步距离" {
                 }
             }
         }
-        if @DistanceMatched {
+        if @DistanceMatched == 1 {
             const DistanceValue = number(@DistanceTotal)
             @Metric = {"name": "步行与跑步距离"}
             @Metric = setValue(@Metric, "unit", "{DistanceUnit}")
@@ -344,11 +344,11 @@ const TimestampValue = formatDate(NowValue, "ISO 8601")
 @Payload = setValue(@Payload, "timestamp", "{TimestampValue}")
 @Payload = setValue(@Payload, "health", "{@HealthData}")
 
-if @HasLocation {
+if @HasLocation == 1 {
     @Payload = setValue(@Payload, "location", "{@LocationData}")
 }
 
-if @HasWifi {
+if @HasWifi == 1 {
     @Payload = setValue(@Payload, "wifi", "{@WifiData}")
 }
 
@@ -357,10 +357,10 @@ const ServerResponse = downloadURL(HAEndpoint)
 // Send optional Wi-Fi fields separately.  Empty Get Wi-Fi Detail outputs are
 // not valid form values on iOS, so they must never be included in the main
 // request when the phone is off Wi-Fi.
-if @HasWifi {
+if @HasWifi == 1 {
     const WifiSSIDResponse = downloadURL(HAEndpoint)
 }
-if @HasBssid {
+if @HasBssid == 1 {
     const WifiBSSIDResponse = downloadURL(HAEndpoint)
 }
 const ResponseText = getText(ServerResponse)
