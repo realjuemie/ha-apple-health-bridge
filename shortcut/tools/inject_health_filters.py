@@ -404,18 +404,21 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
             "GroupingIdentifier": group,
             "WFCondition": 4,
             "WFControlFlowMode": 0,
-            # Show the picker on the first run or whenever the saved source
-            # no longer exists in the live HealthKit source list.
+            # Device discovery is a one-time configuration step.  Do not
+            # validate the saved source against a small, recent sample list on
+            # every run: that list can omit a valid source and would make an
+            # automation prompt interactively forever.
+            "WFConditionalActionString": "__AHB_SOURCE_REQUIRED__",
             "WFInput": {
                 "Type": "Variable",
                 "Variable": _token(
                     {
-                        "Type": "Variable",
-                        "VariableName": "SourceMatched",
+                        "OutputUUID": saved_source_trim_uuid,
+                        "Type": "ActionOutput",
+                        "OutputName": "SavedSourceText",
                     }
                 ),
             },
-            "WFNumberValue": 0,
         },
     }
     save_action = {
@@ -447,23 +450,21 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
     }
 
     start = actions.index(source_sample)
-    choice_start = source_choice_index
     block_end = actions.index(source_variable)
-    chooser_actions = actions[choice_start : block_end + 1]
-    for action in chooser_actions:
+    source_actions = actions[start : block_end + 1]
+    for action in source_actions:
         action.setdefault("WFWorkflowActionParameters", {})["GroupingIdentifier"] = group
-    # Keep source discovery outside the conditional so a saved source is
-    # reconciled against a live HealthKit sample on every run. Only the
-    # interactive picker and save request belong to the first-run branch.
+    # Keep the saved-source preload outside the conditional. The discovery,
+    # picker, and save request all belong to the first-run branch.
     actions[start:start] = [
         get_action,
         source_text_action,
         saved_source_trim_action,
         saved_source_preload,
     ]
-    choice_start += 4
-    actions[choice_start:choice_start] = [if_action]
-    after = choice_start + 1 + len(chooser_actions)
+    start += 4
+    actions[start:start] = [if_action]
+    after = start + 1 + len(source_actions)
     actions[after:after] = [save_action, otherwise, end_action]
 
 
