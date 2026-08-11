@@ -20,6 +20,7 @@ const NowValue = currentDate()
 const TodayDateKey = formatDate(NowValue, "Custom", "yyyy-MM-dd")
 // The injector loads the persisted source before the discovery loop.
 @SelectedSource = ""
+@SourceMatched = 0
 
 // The injector turns this into a today/Day grouped Steps query.  Its Source
 // details are used to build a one-time device picker, so no literal iPhone or
@@ -30,13 +31,13 @@ for DeviceSourceItem in DeviceSamples {
     const DeviceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSourceItem}", "WFContentItemPropertyName": "Source"})
     const DeviceSourceNameText = getText(DeviceSourceRaw)
     const DeviceSourceName = trimWhitespace(DeviceSourceNameText)
-    // Reconcile the persisted value with the current HealthKit spelling.
-    // iOS may add formatting around a source name when it comes back from a
-    // webhook response; using the name discovered from a live sample keeps
-    // subsequent step/distance comparisons stable.
-    if @SelectedSource {
-        if @SelectedSource contains DeviceSourceName {
+    // Reconcile the persisted value with a live HealthKit source exactly.
+    // Do not use `contains`: source names can contain one another, and a
+    // shorter candidate would then overwrite the user's selected device.
+    if @SourceMatched == 0 {
+        if @SelectedSource == DeviceSourceName {
             @SelectedSource = DeviceSourceName
+            @SourceMatched = 1
         }
     }
     @DeviceSourceMap = setValue(@DeviceSourceMap, "{DeviceSourceName}", "{DeviceSourceName}")

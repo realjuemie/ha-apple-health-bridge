@@ -398,11 +398,18 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
             "GroupingIdentifier": group,
             "WFCondition": 4,
             "WFControlFlowMode": 0,
-            "WFConditionalActionString": "__AHB_SOURCE_REQUIRED__",
+            # Show the picker on the first run or whenever the saved source
+            # no longer exists in the live HealthKit source list.
             "WFInput": {
                 "Type": "Variable",
-                "Variable": _token({"OutputUUID": text_uuid, "Type": "ActionOutput", "OutputName": "SourceConfigText"}),
+                "Variable": _token(
+                    {
+                        "Type": "Variable",
+                        "VariableName": "SourceMatched",
+                    }
+                ),
             },
+            "WFNumberValue": 0,
         },
     }
     save_action = {
