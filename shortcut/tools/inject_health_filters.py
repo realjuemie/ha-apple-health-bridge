@@ -334,21 +334,20 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         raise ValueError("Compiled Webhook text action not found")
     endpoint_uuid = endpoint["WFWorkflowActionParameters"]["UUID"]
     endpoint_token = _url_token(endpoint_uuid, "HAEndpoint")
+    source_config_url = _url_token_suffix(
+        endpoint_uuid, "HAEndpoint", "?config=source"
+    )
     group = str(uuid.uuid4())
 
     get_uuid = str(uuid.uuid4())
     get_action = {
         "WFWorkflowActionIdentifier": "is.workflow.actions.downloadurl",
         "WFWorkflowActionParameters": {
-            "WFURL": endpoint_token,
-            "WFHTTPMethod": "POST",
-            "WFHTTPBodyType": "Form",
-            "WFFormValues": {
-                "Value": {
-                    "WFDictionaryFieldValueItems": [_form_text_item("config", "source")]
-                },
-                "WFSerializationType": "WFDictionaryFieldValue",
-            },
+            # A plain GET query is more reliable than a form POST for reading
+            # a non-JSON source name on iOS. It also avoids iOS returning an
+            # empty Content value on later runs.
+            "WFURL": source_config_url,
+            "WFHTTPMethod": "GET",
             "CustomOutputName": "SourceConfigResponse",
             "UUID": get_uuid,
         },
