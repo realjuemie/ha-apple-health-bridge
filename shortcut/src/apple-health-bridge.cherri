@@ -18,6 +18,8 @@ const HealthAuthorization = rawAction("is.workflow.actions.filter.health.quantit
 const HAEndpoint = text(haWebhook)
 const NowValue = currentDate()
 const TodayDateKey = formatDate(NowValue, "Custom", "yyyy-MM-dd")
+// The injector loads the persisted source before the discovery loop.
+@SelectedSource = ""
 
 // The injector turns this into a today/Day grouped Steps query.  Its Source
 // details are used to build a one-time device picker, so no literal iPhone or
@@ -28,6 +30,15 @@ for DeviceSourceItem in DeviceSamples {
     const DeviceSourceRaw = rawAction("is.workflow.actions.properties.health.quantity", {"WFInput": "${DeviceSourceItem}", "WFContentItemPropertyName": "Source"})
     const DeviceSourceNameText = getText(DeviceSourceRaw)
     const DeviceSourceName = trimWhitespace(DeviceSourceNameText)
+    // Reconcile the persisted value with the current HealthKit spelling.
+    // iOS may add formatting around a source name when it comes back from a
+    // webhook response; using the name discovered from a live sample keeps
+    // subsequent step/distance comparisons stable.
+    if @SelectedSource {
+        if @SelectedSource contains DeviceSourceName {
+            @SelectedSource = DeviceSourceName
+        }
+    }
     @DeviceSourceMap = setValue(@DeviceSourceMap, "{DeviceSourceName}", "{DeviceSourceName}")
 }
 const DeviceChoice = chooseFromList(@DeviceSourceMap, "选择用于同步的健康数据设备", false, false)

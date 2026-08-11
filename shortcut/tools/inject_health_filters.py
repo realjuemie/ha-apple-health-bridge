@@ -313,9 +313,16 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
         (a for a in actions if a.get("WFWorkflowActionParameters", {}).get("CustomOutputName") == "DeviceSourceText"),
         None,
     )
+    source_choice_index = actions.index(source_choice)
     source_variable = next(
-        (a for a in actions if a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.setvariable"
-         and a.get("WFWorkflowActionParameters", {}).get("WFVariableName") == "SelectedSource"),
+        (
+            a
+            for i, a in enumerate(actions)
+            if i > source_choice_index
+            and a.get("WFWorkflowActionIdentifier") == "is.workflow.actions.setvariable"
+            and a.get("WFWorkflowActionParameters", {}).get("WFVariableName")
+            == "SelectedSource"
+        ),
         None,
     )
     if not all((source_sample, source_choice, source_text, source_variable)):
@@ -427,18 +434,23 @@ def _inject_source_persistence(shortcut: dict[str, Any]) -> None:
     }
 
     start = actions.index(source_sample)
+    choice_start = source_choice_index
     block_end = actions.index(source_variable)
-    source_actions = actions[start : block_end + 1]
-    for action in source_actions:
+    chooser_actions = actions[choice_start : block_end + 1]
+    for action in chooser_actions:
         action.setdefault("WFWorkflowActionParameters", {})["GroupingIdentifier"] = group
+    # Keep source discovery outside the conditional so a saved source is
+    # reconciled against a live HealthKit sample on every run. Only the
+    # interactive picker and save request belong to the first-run branch.
     actions[start:start] = [
         get_action,
         source_text_action,
         saved_source_trim_action,
         saved_source_preload,
-        if_action,
     ]
-    after = start + 5 + len(source_actions)
+    choice_start += 4
+    actions[choice_start:choice_start] = [if_action]
+    after = choice_start + 1 + len(chooser_actions)
     actions[after:after] = [save_action, otherwise, end_action]
 
 
