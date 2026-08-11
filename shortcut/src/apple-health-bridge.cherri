@@ -325,14 +325,17 @@ if @Selected contains "位置信息" {
 
 if @Selected contains "Wi-Fi 信息" {
     const WifiNameValue = getWifiDetail("Network Name")
-    const BssidValue = getWifiDetail("BSSID")
     if WifiNameValue {
         @WifiData = setValue(@WifiData, "ssid", "{WifiNameValue}")
         @HasWifi = true
-    }
-    if BssidValue {
-        @WifiData = setValue(@WifiData, "bssid", "{BssidValue}")
-        @HasBssid = true
+        // BSSID is unavailable on cellular connections and can abort the
+        // Shortcut before the public webhook request. Only query it after a
+        // network name confirms that Wi-Fi is actually connected.
+        const BssidValue = getWifiDetail("BSSID")
+        if BssidValue {
+            @WifiData = setValue(@WifiData, "bssid", "{BssidValue}")
+            @HasBssid = true
+        }
     }
 }
 

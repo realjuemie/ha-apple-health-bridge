@@ -732,6 +732,15 @@ def inject(source: Path, destination: Path) -> tuple[int, int]:
                     "OutputUUID": form_output_ids[output_name],
                     "OutputName": output_name,
                 }))
+            # Report Wi-Fi availability on every main request. Home
+            # Assistant uses this to clear stale SSID/BSSID values on
+            # cellular data; health data remains unaffected.
+            items.append(
+                _form_item(
+                    "wifi_available",
+                    {"Type": "Variable", "VariableName": "HasWifi"},
+                )
+            )
             params["WFFormValues"] = {
                 "Value": {"WFDictionaryFieldValueItems": items},
                 "WFSerializationType": "WFDictionaryFieldValue",
